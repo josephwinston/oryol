@@ -15,23 +15,24 @@ using namespace Resource;
 using namespace Messaging;
     
 //------------------------------------------------------------------------------
-RenderFacade::RenderFacade() :
-isValid(false) {
+RenderFacade::RenderFacade(const RenderSetup& setup) :
+valid(false) {
     this->SingletonEnsureUnique();
+    this->setup(setup);
 }
 
 //------------------------------------------------------------------------------
 RenderFacade::~RenderFacade() {
-    if (this->isValid) {
-        this->Discard();
+    if (this->valid) {
+        this->discard();
     }
 }
 
 //------------------------------------------------------------------------------
 void
-RenderFacade::Setup(const RenderSetup& setup) {
-    o_assert_dbg(!this->isValid);
-    this->isValid = true;
+RenderFacade::setup(const RenderSetup& setup) {
+    o_assert_dbg(!this->valid);
+    this->valid = true;
     this->renderSetup = setup;
     this->displayManager.SetupDisplay(setup);
     this->stateWrapper.Setup();
@@ -41,26 +42,19 @@ RenderFacade::Setup(const RenderSetup& setup) {
 
 //------------------------------------------------------------------------------
 void
-RenderFacade::Discard() {
-    o_assert_dbg(this->isValid);
+RenderFacade::discard() {
+    o_assert_dbg(this->valid);
     this->renderManager.Discard();
     this->resourceManager.Discard();
     this->stateWrapper.Discard();
     this->displayManager.DiscardDisplay();
-    this->isValid = false;
+    this->valid = false;
 }
 
 //------------------------------------------------------------------------------
 bool
-RenderFacade::IsValid() const {
-    return this->isValid;
-}
-
-//------------------------------------------------------------------------------
-void
-RenderFacade::ModifyDisplay(const RenderSetup& renderSetup) {
-    o_assert_dbg(this->isValid);
-    this->displayManager.ModifyDisplay(renderSetup);
+RenderFacade::isValid() const {
+    return this->valid;
 }
 
 //------------------------------------------------------------------------------
@@ -102,64 +96,47 @@ RenderFacade::GetDisplayAttrs() const {
 */
 Id
 RenderFacade::LookupResource(const Locator& loc) {
-    o_assert_dbg(this->isValid);
+    o_assert_dbg(this->valid);
     return this->resourceManager.LookupResource(loc);
 }
 
 //------------------------------------------------------------------------------
 void
-RenderFacade::DiscardResource(const Id& resId) {
-    o_assert_dbg(this->isValid);
-    this->resourceManager.DiscardResource(resId);
+RenderFacade::ReleaseResource(const Id& resId) {
+    o_assert_dbg(this->valid);
+    this->resourceManager.ReleaseResource(resId);
 }
 
 //------------------------------------------------------------------------------
 Resource::State::Code
 RenderFacade::QueryResourceState(const Id& resId) {
-    o_assert_dbg(this->isValid);
+    o_assert_dbg(this->valid);
     return this->resourceManager.QueryResourceState(resId);
 }
 
 //------------------------------------------------------------------------------
 void
-RenderFacade::ApplyRenderTarget(const Id& resId) {
-    o_assert_dbg(this->isValid);
-    int32 width, height;
-    if (!resId.IsValid()) {
-        // apply default framebuffer
-        this->renderManager.ApplyRenderTarget(nullptr);
-        
-        // update viewport
-        const DisplayAttrs& attrs = this->displayManager.GetDisplayAttrs();
-        width = attrs.GetFramebufferWidth();
-        height = attrs.GetFramebufferHeight();
-    }
-    else {
-        texture* renderTarget = this->resourceManager.LookupTexture(resId);
-        o_assert_dbg(nullptr != renderTarget);
-        this->renderManager.ApplyRenderTarget(renderTarget);
-        
-        // update viewport
-        const TextureAttrs& attrs = renderTarget->GetTextureAttrs();
-        width = attrs.GetWidth();
-        height = attrs.GetHeight();
-    }
-    // update viewport to cover full render target
-    this->stateWrapper.ApplyState(State::ViewPort, 0, 0, width, height);
+RenderFacade::ApplyDefaultRenderTarget() {
+    o_assert_dbg(this->valid);
+    this->renderManager.ApplyRenderTarget(nullptr);
 }
 
 //------------------------------------------------------------------------------
 void
-RenderFacade::ApplyMesh(const Id& resId) {
-    o_assert_dbg(this->isValid);
-    this->renderManager.ApplyMesh(this->resourceManager.LookupMesh(resId));
+RenderFacade::ApplyOffscreenRenderTarget(const Id& resId) {
+    o_assert_dbg(this->valid);
+    o_assert_dbg(resId.IsValid());
+
+    texture* renderTarget = this->resourceManager.LookupTexture(resId);
+    o_assert_dbg(nullptr != renderTarget);
+    this->renderManager.ApplyRenderTarget(renderTarget);
 }
 
 //------------------------------------------------------------------------------
 void
-RenderFacade::ApplyProgram(const Id& resId, uint32 selMask) {
-    o_assert_dbg(this->isValid);
-    this->renderManager.ApplyProgram(this->resourceManager.LookupProgramBundle(resId), selMask);
+RenderFacade::ApplyDrawState(const Id& resId) {
+    o_assert_dbg(this->valid);
+    this->renderManager.ApplyDrawState(this->resourceManager.LookupDrawState(resId));
 }
 
 //------------------------------------------------------------------------------
@@ -167,6 +144,7 @@ bool
 RenderFacade::BeginFrame() {
     this->resourceManager.Update();
     this->displayManager.ProcessSystemEvents();
+    this->renderManager.BeginFrame();
     
     /// @todo: check and return whether rendering is possible / necessary
     return true;
@@ -175,28 +153,51 @@ RenderFacade::BeginFrame() {
 //------------------------------------------------------------------------------
 void
 RenderFacade::EndFrame() {
+    this->renderManager.EndFrame();
     this->displayManager.Present();
 }
 
 //------------------------------------------------------------------------------
 void
+RenderFacade::UpdateVertices(const Resource::Id& resId, int32 numBytes, const void* data) {
+    o_assert_dbg(this->valid);
+    mesh* msh = this->resourceManager.LookupMesh(resId);
+    this->renderManager.UpdateVertices(msh, numBytes, data);
+}
+
+//------------------------------------------------------------------------------
+void
 RenderFacade::Clear(bool color, bool depth, bool stencil) {
-    o_assert_dbg(this->isValid);
+    o_assert_dbg(this->valid);
     this->renderManager.Clear(color, depth, stencil);
 }
 
 //------------------------------------------------------------------------------
 void
 RenderFacade::Draw(int32 primGroupIndex) {
-    o_assert_dbg(this->isValid);
+    o_assert_dbg(this->valid);
     this->renderManager.Draw(primGroupIndex);
 }
 
 //------------------------------------------------------------------------------
 void
 RenderFacade::Draw(const PrimitiveGroup& primGroup) {
-    o_assert_dbg(this->isValid);
+    o_assert_dbg(this->valid);
     this->renderManager.Draw(primGroup);
+}
+
+//------------------------------------------------------------------------------
+void
+RenderFacade::DrawInstanced(int32 primGroupIndex, int32 numInstances) {
+    o_assert_dbg(this->valid);
+    this->renderManager.DrawInstanced(primGroupIndex, numInstances);
+}
+
+//------------------------------------------------------------------------------
+void
+RenderFacade::DrawInstanced(const PrimitiveGroup& primGroup, int32 numInstances) {
+    o_assert_dbg(this->valid);
+    this->renderManager.DrawInstanced(primGroup, numInstances);
 }
 
 } // namespace Render

@@ -10,6 +10,10 @@ import platform
 import subprocess
 import shutil
 from string import Template
+from tools import texexport as TexExport
+from tools import sdksetup_android as SDKSetupAndroid
+from tools import sdksetup_nacl as SDKSetupNacl
+from tools import sdksetup_emscripten as SDKSetupEmsc
 
 # supported platforms
 platforms = ['osx', 'linux', 'win32', 'win64', 'emscripten', 'pnacl', 'ios', 'android']
@@ -52,6 +56,10 @@ def loadSelectedConfigName() :
     f.close()
     return selConfig
 
+# test if a config exists
+def isValidConfig(configName) :
+    return os.path.isfile('configs{}.json'.format(configName))
+
 # automatically choose a config name for this platform (if none has been selected)
 def chooseConfigName() :
     hostOS = platform.system()
@@ -93,42 +101,65 @@ def loadMatchingConfigs(partialConfigName) :
 def testCMake() :
     try:
         out = subprocess.check_output(["cmake", "--version"])
+        # split into major and minor version number
         ver = out.split()[2].split('.')
-        if (int(ver[0]) >= 2) and (int(ver[1]) >= 8) and (int(ver[2]) >= 11) :
-            print "cmake: ok"
-            return True
-        else :
-            error("cmake must be at least version 2.8.11 (found: '{}.{}.{}')".format(ver[0], ver[1], ver[2]))
-
+        if int(ver[0]) > 2 :
+            print "cmake: found"
+            return
+        elif int(ver[0]) == 2 :
+            if int(ver[1] >= 8) :
+                print "cmake: found"
+                return
+        error("cmake must be at least version 2.8 (found: '{}.{}.{}')".format(ver[0], ver[1], ver[2]))
     except OSError:
-        error("cmake not found (at least cmake 2.8.11 required)")
+        error("cmake NOT FOUND (at least cmake 2.8 required)")
+
+# check whether ccmake config tool exists
+def testCCMake() :
+    try:
+        out = subprocess.check_output(["ccmake", "--version"])
+        print "ccmake: found"
+        return True
+    except OSError:
+        print "ccmake: NOT FOUND"
+        return False;
+
+# check whether cmake-gui config tool exists
+def testCMakeGUI() :
+    try:
+        out = subprocess.check_output(["cmake-gui", "--version"])
+        print "cmake-gui: found"
+        return True
+    except OSError:
+        print "cmake-gui: NOT FOUND"
+        return False;
 
 # check whether ninja exists
 def testNinja() :
     try:
         subprocess.check_output(["ninja", "--version"])
-        print "ninja: ok"
+        print "ninja: found"
         return True;
     except OSError:
-        error("ninja not found")
+        error("ninja NOT FOUND")
 
 # check whether make exists
 def testMake() :
     try :
         subprocess.check_output(["make", "--version"])
-        print "make: ok"
+        print "make: found"
         return True
     except OSError:
-        error("make not found")
+        error("make NOT FOUND")
 
 # check whether xcodebuild exists
 def testXCode() :
     try :
         subprocess.check_output(["xcodebuild", "-version"])
-        print "xcodebuild: ok"
+        print "xcodebuild: found"
         return True
     except OSError:
-        error("xcodebuild not found")
+        error("xcodebuild NOT FOUND")
 
 # test if the given target platform is valid on the given host
 def isValidTargetPlatform(targetPlatform) :
@@ -196,6 +227,24 @@ def getAllValidConfigs() :
             validConfigs.append(config)
     return validConfigs
 
+# test if the build directory of a config exists
+def buildDirExists(config) :
+    return os.path.isdir('build/{}'.format(config['name']))
+
+# recursively find path to file
+def findPath(startDir, subDir, fileName) :
+    curDir  = startDir + '/' + subDir
+    curPath = curDir + '/' + fileName
+    if os.path.isfile(curPath) :
+        return curPath
+    else :
+        for entry in glob.glob(startDir + '/*') :
+            if os.path.isdir(entry) :
+                result = findPath(entry, subDir, fileName)
+                if result != None :
+                    return result
+    return None
+
 # do a cmake run for the selected config
 def runCMake(config) :
     # check whether all required tools are installed
@@ -220,10 +269,10 @@ def runCMake(config) :
             cmdLine.append('-DCMAKE_BUILD_TYPE=Debug')
         if 'unittests' in buildType :
             cmdLine.append('-DORYOL_UNITTESTS=ON')
-
-        # some platform-specific stuff
-        if targetPlatform == 'pnacl' :
-            cmdLine.append('-DNACL_RELATIVE_SDK_LOCATION=../nacl_sdk/pepper_canary')
+            cmdLine.append('-DORYOL_EXCEPTIONS=ON')
+        else :
+            cmdLine.append('-DORYOL_UNITTESTS=OFF')
+            cmdLine.append('-DORYOL_EXCEPTIONS=OFF')
 
         # toolchain file required?
         if isValidCrossPlatform(targetPlatform) :
@@ -239,13 +288,14 @@ def runCMake(config) :
             os.makedirs(buildPath)
 
         # change to build path and execute the cmake command
-        subprocess.call(args=cmdLine, cwd=buildPath)
+        if subprocess.call(args=cmdLine, cwd=buildPath) != 0 :
+            error("Cmake run failed.")
 
     else :
         error("Build requirements not met!")
 
-# do a command line build
-def runBuild(config) :
+# do a command line build, if target is None, build all targets
+def runBuild(config, target) :
     if testConfigRequirements(config) :
         name = config['name']
         generator = config['target']['generator']
@@ -253,51 +303,86 @@ def runBuild(config) :
         buildPath = "build/{}".format(name)
         if 'Xcode' in generator :
             # run the Xcode command line tool
+            args = ['xcodebuild', '-jobs', '3']
             if 'release' in buildType :
-                subprocess.call(args=["xcodebuild", "-configuration", "Release", "-jobs", "3"], cwd=buildPath)
+                args.extend(['-configuration', 'Release'])
             else :
-                subprocess.call(args=["xcodebuild", "-configuration", "Debug", "-jobs", "3"], cwd=buildPath)
+                args.extend(['-configuration', 'Debug'])
+            if target != None :
+                args.extend(['-target', target])
         elif 'Makefiles' in generator :
-            # run make
-            subprocess.call(args=["make", "-j3"], cwd=buildPath)
+            args = ['make', '-j3']
+            if target != None :
+                args.append(target)
         elif 'Ninja' in generator :
-            # run ninja
-            subprocess.call(args="ninja", cwd=buildPath)
+            args = ['ninja']
+            if target != None :
+                args.append(target)
         else :
             # generic invokation of cmake --build
+            args = ['cmake', '--build', '.']
             if 'release' in buildType :
-                subprocess.call(args=["cmake", "--build", ".", "--config", "Release"], cwd=buildPath)
+                args.extend(['--config', 'Release'])
             else :
-                subprocess.call(args=["cmake", "--build", ".", "--config", "Debug"], cwd=buildPath)
+                args.extend(['--config', 'Debug'])
+        if subprocess.call(args=args, cwd=buildPath) != 0 :
+            error("Build failed.")
 
-# do a command line build
-def runRebuild(config) :
+# do a command line build, build all if target is None
+def runRebuild(config, target) :
     if testConfigRequirements(config) :
         name = config['name']
         generator = config['target']['generator']
         buildType = config['target']['build-type']
         buildPath = "build/{}".format(name)
+        exitCode = 0
         if 'Xcode' in generator :
             # run the Xcode command line tool
-            subprocess.call(args=["xcodebuild", "clean"], cwd=buildPath)
-            if 'release' in buildType :
-                subprocess.call(args=["xcodebuild", "-configuration", "Release", "-jobs", "3"], cwd=buildPath)
-            else :
-                subprocess.call(args=["xcodebuild", "-configuration", "Debug", "-jobs", "3"], cwd=buildPath)
+            exitCode = subprocess.call(args=['xcodebuild', 'clean'], cwd=buildPath)
         elif 'Makefiles' in generator :
             # run make
-            subprocess.call(args=["make", "clean"], cwd=buildPath)
-            subprocess.call(args=["make", "-j3"], cwd=buildPath)
+            exitCode = subprocess.call(args=['make', 'clean'], cwd=buildPath)
         elif 'Ninja' in generator :
             # run ninja
-            subprocess.call(args=["ninja", "clean"], cwd=buildPath)
-            subprocess.call(args=["ninja"], cwd=buildPath)
+            exitCode = subprocess.call(args=['ninja', 'clean'], cwd=buildPath)
         else :
             # generic invokation of cmake --build
-            if 'release' in buildType :
-                subprocess.call(args=["cmake", "--clean-first", "--build", ".", "--config", "Release"], cwd=buildPath)
-            else :                
-                subprocess.call(args=["cmake", "--clean-first", "--build", ".", "--config", "Debug"], cwd=buildPath)
+            exitCode = subprocess.call(args=['cmake', '--build', '.', '--target', 'clean'], cwd=buildPath)
+        if exitCode != 0 :
+            error("Clean failed.")
+        runBuild(config, target)
+
+# deploy a target executable to a connected mobile device (for Android and iOS development)
+def runDeploy(config, target) :
+    if 'android-' in config['name'] :
+        apkName = target + '-debug.apk'
+        pathToApk = 'bin/android/{}'.format(apkName)
+        if pathToApk != None :
+            subprocess.call(args=[SDKSetupAndroid.getAdbPath(), 'install', '-r', pathToApk])
+        else :
+            error('Could not find apk: {}'.format(apkName))
+    elif 'ios-' in config['name'] :
+        error('ios deployment not yet supported')
+    else :
+        error('{} is not a mobile platform'.format(config['name']))
+
+# run cmake-gui or ccmake on config
+def runConfigure(config) :
+    if testConfigRequirements(config) :
+        name = config['name']
+        buildPath = "build/{}".format(name)
+        # prefer ccmake over cmake-gui
+        if testCCMake() :
+            subprocess.call(args=['ccmake', buildPath])
+        elif testCMakeGUI() :
+            subprocess.call(args=['cmake-gui', buildPath])
+        else :
+            error('Cannot call cmake-gui or ccmake, not installed or not in path!')
+
+# export the sample assets to build/webpage
+def exportSampleAssets() :
+    TexExport.configure(os.path.abspath(os.path.dirname(__file__)), 'data', 'build/webpage')
+    TexExport.exportSampleTextures()
 
 # build a web page under /build/webpage
 def buildWebPage() :
@@ -317,33 +402,57 @@ def buildWebPage() :
     f.close
 
     # build the html link list
-    content = ''
+    emscriptenContent = ''
+    pnaclContent = ''
+    androidContent = ''
     for sample in samples['samples'] :
         if sample['name'] != '__end__' :
-            content += '<li><a href="{}.html">{}</a>: {}</li>\n'.format(sample['name'], sample['name'], sample['desc'])
+            if sample['type'] == 'emscripten' :
+                emscriptenContent += '<li><a href="{}.html">{}</a>: {}</li>\n'.format(sample['name'], sample['name'], sample['desc'])
+            elif sample['type'] == 'pnacl' :
+                pnaclContent += '<li><a href="{}_pnacl.html">{}</a>: {}</li>\n'.format(sample['name'], sample['name'], sample['desc'])
+            elif sample['type'] == 'android' :
+                androidContent += '<li><a href="{}-debug.apk">{}</a>: {}</li>\n'.format(sample['name'], sample['name'], sample['desc'])
 
     # populate the html template, and write to the build directory
-    html = templ.safe_substitute(samples=content)
+    html = templ.safe_substitute(emscripten_samples=emscriptenContent, pnacl_samples=pnaclContent, android_samples=androidContent)
     f = open('build/webpage/index.html', 'w')
     f.write(html)
     f.close()
 
-    # copy the sample files over
+    # copy the HTML sample files over
     for sample in samples['samples'] :
-        if sample['name'] != '__end__' :
+        if sample['name'] != '__end__' and sample['type'] == 'emscripten' :
             for ext in ['html', 'js', 'html.mem'] :
                 shutil.copy('bin/emsc/{}.{}'.format(sample['name'], ext), 'build/webpage')
 
-    print 'Generated Samples web page under build/webpage!'
+    # copy the PNaCl sample files over
+    for sample in samples['samples'] :
+        if sample['name'] != '__end__' and sample['type'] == 'pnacl' :
+            shutil.copy('bin/pnacl/{}_pnacl.html'.format(sample['name']), 'build/webpage')
+            for ext in ['nmf', 'pexe'] :
+                shutil.copy('bin/pnacl/{}.{}'.format(sample['name'], ext), 'build/webpage')
 
+    # copy the Android sample files over
+    for sample in samples['samples'] :
+        if sample['name'] != '__end__' and sample['type'] == 'android' :
+            shutil.copy('bin/android/{}-debug.apk'.format(sample['name']), 'build/webpage')
+
+    # export the sample assets
+    exportSampleAssets()
+
+    # copy data files over
+    for dataFile in glob.glob('data/dst/*.txt') :
+        shutil.copy(dataFile, 'build/webpage')
+
+    print 'Generated Samples web page under build/webpage!'
 
 #===============================================================================
 if len(sys.argv) == 1 :
     print '-------------------------------------'
     print 'The Oryol build system control script'
     print '-------------------------------------'
-    print 'This script is used to setup, delete, list build configs,'
-    print 'to select the active config, and build it.\n'
+    print 'Use this script instead of invoking cmake directly for easier build system management\n'
     print 'Invocation:'
     print 'oryol [COMMAND] [SUBCOMMAND] [config]\n'
     print 'Commands:'
@@ -353,17 +462,27 @@ if len(sys.argv) == 1 :
     print 'oryol new [config-name]'
     print '  create a config skeleton json file'
     print 'oryol select [config-name]'
-    print '  set the active config (omit config-name to select the default config for the platform'
+    print '  set the active config (omit config-name to select the default config for the platform)'
     print 'oryol update [config-name, partial-config-name or all]'
     print '  do a cmake run on the selected or provided config (required after adding sources)'
+    print 'oryol open [config-name]'
+    print "  open the config's project in the IDE (only works for Xcode and VStudio currently)"
     print 'oryol build [config-name, partial-config-name or all]'
     print '  build selected or provided config'
     print 'oryol rebuild [config-name, partial-config-name or all]'
     print '  rebuild selected or provided config'
     print 'oryol clean [config-name, partial-config-name or all]'
     print '  delete the cmake cache and build files of the selected or provided config'
+    print 'oryol make target [config-name, partial-config-name or all]'
+    print '  build a specific target'
+    print 'oryol deploy target [config-name]'
+    print '  make and deploy a target executable to mobile device'
+    print 'oryol config [config-name]'
+    print '  call cmake-gui or ccmake for selected or specific config'
     print 'oryol webpage'
     print '  build web samples and create web page from it'
+    print 'oryol setup [android | nacl | emscripten]'
+    print '  setup a local Android, Google Native Client, or Emscripten SDK'
 
 else :
     cmd = sys.argv[1]
@@ -441,8 +560,26 @@ else :
                 configs = getAllValidConfigs()
             else :
                 configs = loadMatchingConfigs(sys.argv[2])
-        for config in configs: 
-            runCMake(config)
+        if len(configs) == 0 :
+            error('No matching configs found!')
+        else :
+            for config in configs: 
+                runCMake(config)
+
+    elif cmd == 'open' :
+        # open project in IDE
+        if len(sys.argv) < 3 :
+            config = getActiveConfig()
+        else :
+            config = loadConfig(sys.argv[2])
+        if 'Xcode' in config['target']['generator'] :
+            print "Opening '{}' in Xcode...".format(config['name'])
+            subprocess.call(['open', 'build/{}/oryol.xcodeproj'.format(config['name'])])
+        elif 'Visual Studio' in config['target']['generator'] :
+            print "Opening '{}' in Visual Studio...".format(config['name'])
+            subprocess.call(['cmd', '/c', 'start', 'build\{}\oryol.sln'.format(config['name'])])
+        else :
+            error('open is currently only supported for Xcode and VStudio projects')
 
     elif cmd == 'clean' :
         # delete the build files for configs
@@ -453,26 +590,33 @@ else :
                 configs = getAllValidConfigs()
             else :
                 configs = loadMatchingConfigs(sys.argv[2])
-        for config in configs :
-            path = 'build/{}'.format(config['name'])
-            if os.path.isdir(path) :
-                shutil.rmtree(path)
-                print "Directory '{}' deleted!".format(path)
-            else :
-                print "Directory '{}' didn't exist, nothing done.".format(path)
+        if len(configs) == 0 :
+            error('No matching configs found!')
+        else :
+            for config in configs :
+                path = 'build/{}'.format(config['name'])
+                if os.path.isdir(path) :
+                    shutil.rmtree(path)
+                    print "Directory '{}' deleted!".format(path)
+                else :
+                    print "Directory '{}' didn't exist, nothing done.".format(path)
 
     elif cmd == 'build' :
         # run a command line build
         if len(sys.argv) < 3 :
+            # no args given, build the active config
             configs = [ getActiveConfig() ]
         else :
             if sys.argv[2] == 'all' :
                 configs = getAllValidConfigs()
             else :
                 configs = loadMatchingConfigs(sys.argv[2])
-        for config in configs :
-            runCMake(config)
-            runBuild(config)
+        if len(configs) == 0 :
+            error('No matching configs found!')
+        else :
+            for config in configs :
+                runCMake(config)
+                runBuild(config, None)
 
     elif cmd == 'rebuild' :
         # run a command line build
@@ -483,19 +627,80 @@ else :
                 configs = getAllValidConfigs()
             else :
                 configs = loadMatchingConfigs(sys.argv[2])
-        for config in configs :
+        if len(configs) == 0 :
+            error('No matching configs found!')
+        else :
+            for config in configs :
+                runCMake(config)
+                runRebuild(config, None)
+
+    elif cmd == 'make' :
+        # build a specific target
+        if len(sys.argv) < 3 :
+            error("need at least a target name!")
+        else :
+            target = sys.argv[2]
+            if len(sys.argv) < 4 :
+                configs = [ getActiveConfig() ]
+            else :
+                if sys.argv[3] == 'all' :
+                    configs = getAllValidConfigs()
+                else :
+                    configs = loadMatchingConfigs(sys.argv[3])
+            for config in configs :
+                if not buildDirExists(config) :
+                    runCMake(config)
+                runBuild(config, target)
+
+    elif cmd == 'deploy' :
+        # deploy to mobile device
+        if len(sys.argv) < 3 :
+            error("need at least target name!")
+        else :
+            target = sys.argv[2]
+            if len(sys.argv) < 4 :
+                config = getActiveConfig()
+            else :
+                configs = loadConfig(sys.argv[3])
+            runBuild(config, target)
+            runDeploy(config, target)
+
+    elif cmd == 'config' :
+        # call ccmake or cmake-gui on a config
+        if len(sys.argv) < 3 :
+            config = getActiveConfig()
+        else :
+            config = loadConfig(sys.argv[2])
+        if not buildDirExists(config) :
             runCMake(config)
-            runRebuild(config)
+        runConfigure(config)            
 
     elif cmd == 'webpage' :
         config = loadConfig("emscripten-make-release")
         runCMake(config)
-        runRebuild(config)
+        runRebuild(config, None)
+        config = loadConfig("pnacl-make-release")
+        runCMake(config)
+        runRebuild(config, None)
+        config = loadConfig("android-make-release")
+        runCMake(config)
+        runRebuild(config, None)
         buildWebPage()
 
+    elif cmd == 'setup' :
+        if len(sys.argv) < 3 :
+            error('must provide sdk name (one of android, emscripten, nacl)')
+        if sys.argv[2] == 'android' :
+            SDKSetupAndroid.setupAndroid()
+        elif sys.argv[2] == 'nacl' :
+            SDKSetupNacl.setupNacl()
+        elif sys.argv[2] == 'emscripten' :
+            SDKSetupEmsc.setupEmscripten()
+        else :
+            error('sdk {} not yet supported (try android, emscripten, nacl)'.format())
 
-
-
+    else :
+        error('Oryol called with unknown argument: {}'.format(cmd))
 
 
 

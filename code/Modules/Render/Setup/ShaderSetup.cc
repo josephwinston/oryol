@@ -12,53 +12,29 @@ using namespace Resource;
 
 //------------------------------------------------------------------------------
 ShaderSetup::ShaderSetup() :
-type(ShaderType::InvalidShaderType) {
+Type(ShaderType::InvalidShaderType) {
     // empty
 }
 
-
 //------------------------------------------------------------------------------
-ShaderSetup
-ShaderSetup::FromSource(const Locator& loc, ShaderType::Code t, const String& src) {
-    ShaderSetup setup;
-    setup.loc = loc;
-    setup.type = t;
-    setup.source = src;
-    return setup;
+ShaderSetup::ShaderSetup(const class Locator& l, ShaderType::Code t) :
+Locator(l),
+Type(t) {
+    // empty
 }
 
 //------------------------------------------------------------------------------
-ShaderSetup
-ShaderSetup::FromSourceAndDefines(const Locator& loc, ShaderType::Code t, const String& src, const Map<String,String>& defines) {
-    ShaderSetup setup;
-    setup.loc = loc;
-    setup.type = t;
-    setup.source = src;
-    return setup;
-}
-
-//------------------------------------------------------------------------------
-const Locator&
-ShaderSetup::GetLocator() const {
-    return this->loc;
-}
-
-//------------------------------------------------------------------------------
-ShaderType::Code
-ShaderSetup::GetType() const {
-    return this->type;
+void
+ShaderSetup::AddSource(ShaderLang::Code slang, const String& source) {
+    o_assert_range(slang, ShaderLang::NumShaderLangs);
+    this->sources[slang] = source;
 }
 
 //------------------------------------------------------------------------------
 const String&
-ShaderSetup::GetSource() const {
-    return this->source;
-}
-
-//------------------------------------------------------------------------------
-const Map<String,String>&
-ShaderSetup::GetDefines() const {
-    return this->defines;
+ShaderSetup::Source(ShaderLang::Code slang) const {
+    o_assert_range(slang, ShaderLang::NumShaderLangs);
+    return this->sources[slang];
 }
 
 } // namespace Render

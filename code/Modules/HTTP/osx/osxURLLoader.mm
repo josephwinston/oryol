@@ -3,7 +3,7 @@
 //------------------------------------------------------------------------------
 #include "Pre.h"
 #include "osxURLLoader.h"
-#include "IO/MemoryStream.h"
+#include "IO/Stream/MemoryStream.h"
 #include <Foundation/Foundation.h>
 
 namespace Oryol {
@@ -34,6 +34,9 @@ osxURLLoader::doOneRequest(const Ptr<HTTPProtocol::HTTPRequest>& req) {
         NSURL* url = [NSURL URLWithString:urlString];
         [urlRequest setURL:url];
         [urlRequest setHTTPMethod:methodString];
+        #if ORYOL_DEBUG
+        [urlRequest setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
+        #endif
         
         // additional header fields
         for (const auto& field : req->GetRequestHeaders()) {

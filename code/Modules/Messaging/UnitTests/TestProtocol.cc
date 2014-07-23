@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// machine generated, do not edit!
+// #version:2# machine generated, do not edit!
 //-----------------------------------------------------------------------------
 #include "Pre.h"
 #include "TestProtocol.h"
@@ -14,7 +14,7 @@ TestProtocol::CreateCallback TestProtocol::jumpTable[TestProtocol::MessageId::Nu
     &TestProtocol::TestMsg2::FactoryCreate,
     &TestProtocol::TestArrayMsg::FactoryCreate,
 };
-Messaging::Message*
+Core::Ptr<Messaging::Message>
 TestProtocol::Factory::Create(Messaging::MessageIdType id) {
     if (id < Messaging::Protocol::MessageId::NumMessageIds) {
         return Messaging::Protocol::Factory::Create(id);

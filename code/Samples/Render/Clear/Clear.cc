@@ -2,17 +2,14 @@
 //  Clear.cc
 //------------------------------------------------------------------------------
 #include "Pre.h"
-#include "Application/App.h"
+#include "Core/App.h"
 #include "Render/RenderFacade.h"
 
-OryolApp("Clear", "1.0");
-
 using namespace Oryol;
-using namespace Oryol::Application;
+using namespace Oryol::Core;
 using namespace Oryol::Render;
 
-// derived application class
-class ClearApp : public App {
+class ClearApp : public Core::App {
 public:
     virtual AppState::Code OnInit();
     virtual AppState::Code OnRunning();
@@ -22,23 +19,15 @@ private:
     RenderFacade* render;
     float red, green, blue;
 };
-
-//------------------------------------------------------------------------------
-void
-OryolMain() {
-    // execution starts here, create our app and start the main loop
-    ClearApp app;
-    app.StartMainLoop();
-}
+OryolMain(ClearApp);
 
 //------------------------------------------------------------------------------
 AppState::Code
 ClearApp::OnInit() {
     // setup rendering system
-    this->render = RenderFacade::CreateSingleton();
-    this->render->Setup(RenderSetup::Windowed(400, 300, "Oryol Clear Sample"));
+    this->render = RenderFacade::CreateSingle(RenderSetup::Windowed(400, 300, "Oryol Clear Sample"));
     this->red = this->green = this->blue = 0.0f;
-    return AppState::Running;
+    return App::OnInit();
 }
 
 //------------------------------------------------------------------------------
@@ -46,6 +35,7 @@ AppState::Code
 ClearApp::OnRunning() {
     // render one frame
     if (this->render->BeginFrame()) {
+        this->render->ApplyDefaultRenderTarget();
         this->render->ApplyState(Render::State::ClearColor, this->red, this->green, this->blue, 1.0f);
         this->render->Clear(true, false, false);
         this->render->EndFrame();
@@ -62,8 +52,7 @@ ClearApp::OnRunning() {
 AppState::Code
 ClearApp::OnCleanup() {
     // cleanup everything
-    this->render->Discard();
     this->render = nullptr;
-    RenderFacade::DestroySingleton();
-    return AppState::Destroy;
+    RenderFacade::DestroySingle();
+    return App::OnCleanup();
 }

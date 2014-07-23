@@ -11,35 +11,6 @@ namespace Render {
     
 //------------------------------------------------------------------------------
 GLenum
-glTypes::AsGLPrimitiveType(PrimitiveType::Code c) {
-    switch (c) {
-        case PrimitiveType::Points:        return GL_POINTS;
-        case PrimitiveType::LineStrip:     return GL_LINE_STRIP;
-        case PrimitiveType::LineLoop:      return GL_LINE_LOOP;
-        case PrimitiveType::Lines:         return GL_LINES;
-        case PrimitiveType::TriangleStrip: return GL_TRIANGLE_STRIP;
-        case PrimitiveType::TriangleFan:   return GL_TRIANGLE_FAN;
-        case PrimitiveType::Triangles:     return GL_TRIANGLES;
-        default:
-            o_error("glTypes::AsGLPrimitiveType: invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
-glTypes::AsGLIndexType(IndexType::Code c) {
-    switch (c) {
-        case IndexType::Index16: return GL_UNSIGNED_SHORT;
-        case IndexType::Index32: return GL_UNSIGNED_INT;
-        default:
-            o_error("glTypes::AsGLIndexType: invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
 glTypes::AsGLTexImageFormat(PixelFormat::Code c) {
     switch (c) {
         case PixelFormat::R8G8B8A8:
@@ -51,12 +22,19 @@ glTypes::AsGLTexImageFormat(PixelFormat::Code c) {
         case PixelFormat::R5G6B5:
             return GL_RGB;
             
+        case PixelFormat::L8:
+            #if ORYOL_OPENGLES2
+                return GL_LUMINANCE;
+            #else
+                return GL_RED;
+            #endif
+            
         case PixelFormat::D16:
         case PixelFormat::D32:
             return GL_DEPTH_COMPONENT;
             
         case PixelFormat::D24S8:
-            #if ORYOL_OPENGLES2
+            #if ORYOL_OPENGLES2 && !ORYOL_EMSCRIPTEN
             return GL_DEPTH_STENCIL_OES;
             #else
             return GL_DEPTH_STENCIL;
@@ -74,19 +52,21 @@ GLenum
 glTypes::AsGLRenderbufferFormat(PixelFormat::Code c) {
     switch (c) {
         case PixelFormat::R8G8B8A8: 
-            #if ORYOL_OPENGLES2
+            #if ORYOL_OPENGLES2 && !ORYOL_EMSCRIPTEN
             return GL_RGBA8_OES;
             #else
             return GL_RGBA8;
             #endif
         case PixelFormat::R8G8B8:   
-            #if ORYOL_OPENGLES2
+            #if ORYOL_OPENGLES2 && !ORYOL_EMSCRIPTEN
             return GL_RGB8_OES;
             #else
             return GL_RGB8;
             #endif
+#if !ORYOL_EMSCRIPTEN
         case PixelFormat::R5G6B5:   
             return GL_RGB565;
+#endif
         case PixelFormat::R5G5B5A1: 
             return GL_RGB5_A1;
         case PixelFormat::R4G4B4A4: 
@@ -94,13 +74,13 @@ glTypes::AsGLRenderbufferFormat(PixelFormat::Code c) {
         case PixelFormat::D16:      
             return GL_DEPTH_COMPONENT16;
         case PixelFormat::D32:      
-            #if ORYOL_OPENGLES2
+            #if ORYOL_OPENGLES2 && !ORYOL_EMSCRIPTEN
             return GL_DEPTH_COMPONENT32_OES;
             #else
             return GL_DEPTH_COMPONENT32;
             #endif
         case PixelFormat::D24S8:    
-            #if ORYOL_OPENGLES2
+            #if ORYOL_OPENGLES2 && !ORYOL_EMSCRIPTEN
             return GL_DEPTH24_STENCIL8_OES;
             #else
             return GL_DEPTH24_STENCIL8;
@@ -117,6 +97,7 @@ glTypes::AsGLTexImageType(PixelFormat::Code c) {
     switch (c) {
         case PixelFormat::R8G8B8A8:
         case PixelFormat::R8G8B8:
+        case PixelFormat::L8:
             return GL_UNSIGNED_BYTE;
             
         case PixelFormat::R5G5B5A1:
@@ -135,7 +116,7 @@ glTypes::AsGLTexImageType(PixelFormat::Code c) {
             return GL_UNSIGNED_INT;
             
         case PixelFormat::D24S8:
-            #if ORYOL_OPENGLES2
+            #if ORYOL_OPENGLES2 && !ORYOL_EMSCRIPTEN
             return GL_UNSIGNED_INT_24_8_OES;
             #else
             return GL_UNSIGNED_INT_24_8;
@@ -144,80 +125,6 @@ glTypes::AsGLTexImageType(PixelFormat::Code c) {
         default:
             // FIXME: add missing values
             o_error("glTypes::AsGLTexImageType(): invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
-glTypes::AsGLUsage(Usage::Code c) {
-    switch (c) {
-        case Usage::Immutable:      return GL_STATIC_DRAW;
-        case Usage::DynamicWrite:   return GL_DYNAMIC_DRAW;
-        case Usage::DynamicStream:  return GL_STREAM_DRAW;
-        default:
-            o_error("glTypes::AsGLUsage(): invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
-glTypes::AsGLTextureWrapMode(TextureWrapMode::Code c) {
-    switch (c) {
-        case TextureWrapMode::ClampToEdge:      return GL_CLAMP_TO_EDGE;
-        case TextureWrapMode::Repeat:           return GL_REPEAT;
-        case TextureWrapMode::MirroredRepeat:   return GL_MIRRORED_REPEAT;
-        default:
-            o_error("glTypes::AsGLTextureWrapMode(): invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
-glTypes::AsGLTextureFilterMode(TextureFilterMode::Code c) {
-    switch (c) {
-        case TextureFilterMode::Nearest:                return GL_NEAREST;
-        case TextureFilterMode::Linear:                 return GL_LINEAR;
-        case TextureFilterMode::NearestMipmapNearest:   return GL_NEAREST_MIPMAP_NEAREST;
-        case TextureFilterMode::NearestMipmapLinear:    return GL_NEAREST_MIPMAP_LINEAR;
-        case TextureFilterMode::LinearMipmapNearest:    return GL_LINEAR_MIPMAP_NEAREST;
-        case TextureFilterMode::LinearMipmapLinear:     return GL_LINEAR_MIPMAP_LINEAR;
-        default:
-            o_error("glTypes::AsGLTextureFilterMode(): invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
-glTypes::AsGLTextureTarget(TextureType::Code c) {
-    switch (c) {
-        case TextureType::Texture2D: 
-            return GL_TEXTURE_2D;
-        case TextureType::Texture3D: 
-            #if ORYOL_OPENGLES2
-            return GL_TEXTURE_3D_OES;
-            #else
-            return GL_TEXTURE_3D;
-            #endif
-        case TextureType::TextureCube: 
-            return GL_TEXTURE_CUBE_MAP;
-        default:
-            o_error("glTypes::AsGLTextureTarget(): invalid param!\n");
-            return 0;
-    }
-}
-
-//------------------------------------------------------------------------------
-GLenum
-glTypes::AsGLShaderType(ShaderType::Code c) {
-    switch (c) {
-        case ShaderType::VertexShader: return GL_VERTEX_SHADER;
-        case ShaderType::FragmentShader: return GL_FRAGMENT_SHADER;
-        default:
-            o_error("glTypes::AsGLShaderType(): invalid param!\n");
             return 0;
     }
 }

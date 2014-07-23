@@ -2,17 +2,16 @@
 //  Triangle.cc
 //------------------------------------------------------------------------------
 #include "Pre.h"
-#include "Application/App.h"
+#include "Core/App.h"
 #include "Render/RenderFacade.h"
 #include "Render/Util/RawMeshLoader.h"
 #include "Render/Util/MeshBuilder.h"
+#include "shaders.h"
 
 using namespace Oryol;
-using namespace Oryol::Application;
+using namespace Oryol::Core;
 using namespace Oryol::Render;
 using namespace Oryol::Resource;
-
-OryolApp("Triangle", "1.0");
 
 // derived application class
 class TriangleApp : public App {
@@ -23,49 +22,23 @@ public:
     
 private:
     RenderFacade* render;
-    Resource::Id meshId;
-    Resource::Id progId;
+    Resource::Id drawState;
 };
-
-// the vertex shader
-static const char* vsSource =
-"VS_INPUT(vec4, position);\n"
-"VS_INPUT(vec4, color0);\n"
-"VS_OUTPUT(vec4, color);\n"
-"void main() {\n"
-"  gl_Position = position;\n"
-"  color = color0;\n"
-"}\n";
-
-// the pixel shader
-static const char* fsSource =
-"FS_INPUT(vec4, color);\n"
-"void main() {\n"
-"  FragmentColor = color;\n"
-"}\n";
-
-//------------------------------------------------------------------------------
-void
-OryolMain() {
-    // execution starts here, create our app and start the main loop
-    TriangleApp app;
-    app.StartMainLoop();
-}
+OryolMain(TriangleApp);
 
 //------------------------------------------------------------------------------
 AppState::Code
 TriangleApp::OnInit() {
     // setup rendering system
-    this->render = RenderFacade::CreateSingleton();
+    this->render = RenderFacade::CreateSingle(RenderSetup::Windowed(400, 400, "Oryol Triangle Sample"));
     this->render->AttachLoader(RawMeshLoader::Create());
-    this->render->Setup(RenderSetup::Windowed(400, 400, "Oryol Triangle Sample"));
     
     // create a triangle mesh, with position and vertex color
     MeshBuilder meshBuilder;
     meshBuilder.SetNumVertices(3);
     meshBuilder.SetIndexType(IndexType::None);
-    meshBuilder.AddComponent(VertexAttr::Position, VertexFormat::Float3);
-    meshBuilder.AddComponent(VertexAttr::Color0, VertexFormat::Float4);
+    meshBuilder.VertexLayout().Add(VertexAttr::Position, VertexFormat::Float3);
+    meshBuilder.VertexLayout().Add(VertexAttr::Color0, VertexFormat::Float4);
     meshBuilder.AddPrimitiveGroup(PrimitiveType::Triangles, 0, 3);
     meshBuilder.Begin();
     // first vertex pos and color
@@ -78,20 +51,13 @@ TriangleApp::OnInit() {
     meshBuilder.Vertex(2, VertexAttr::Position, -0.5f, -0.5f, 0.5f);
     meshBuilder.Vertex(2, VertexAttr::Color0, 0.0f, 0.0f, 1.0f, 1.0f);
     meshBuilder.End();
-    this->meshId = this->render->CreateResource(MeshSetup::FromData("msh"), meshBuilder.GetStream());
-    
-    // build a shader program from a vertex- and fragment shader
-    Id vs = this->render->CreateResource(ShaderSetup::FromSource("vs", ShaderType::VertexShader, vsSource));
-    Id fs = this->render->CreateResource(ShaderSetup::FromSource("fs", ShaderType::FragmentShader, fsSource));
-    ProgramBundleSetup progSetup("prog");
-    progSetup.AddProgram(0, vs, fs);
-    this->progId = this->render->CreateResource(progSetup);
-    
-    // can release vertex- and fragment shader handle now
-    this->render->DiscardResource(vs);
-    this->render->DiscardResource(fs);
-    
-    return AppState::Running;
+    Id mesh = this->render->CreateResource(MeshSetup::FromData("msh"), meshBuilder.GetStream());
+    Id prog = this->render->CreateResource(Shaders::Triangle::CreateSetup());
+    this->drawState = this->render->CreateResource(DrawStateSetup("ds", mesh, prog, 0));
+
+    this->render->ReleaseResource(mesh);
+    this->render->ReleaseResource(prog);
+    return App::OnInit();
 }
 
 //------------------------------------------------------------------------------
@@ -99,14 +65,11 @@ AppState::Code
 TriangleApp::OnRunning() {
     // render one frame
     if (this->render->BeginFrame()) {
-        
-        // clear, apply mesh and shader program, and draw
+        this->render->ApplyDefaultRenderTarget();
         this->render->ApplyState(Render::State::ClearColor, 0.0f, 0.0f, 0.0f, 0.0f);
         this->render->Clear(true, false, false);
-        this->render->ApplyMesh(this->meshId);
-        this->render->ApplyProgram(this->progId, 0);
+        this->render->ApplyDrawState(this->drawState);
         this->render->Draw(0);
-        
         this->render->EndFrame();
     }
     
@@ -118,10 +81,8 @@ TriangleApp::OnRunning() {
 AppState::Code
 TriangleApp::OnCleanup() {
     // cleanup everything
-    this->render->DiscardResource(this->progId);
-    this->render->DiscardResource(this->meshId);
-    this->render->Discard();
+    this->render->ReleaseResource(this->drawState);
     this->render = nullptr;
-    RenderFacade::DestroySingleton();
-    return AppState::Destroy;
+    RenderFacade::DestroySingle();
+    return App::OnCleanup();
 }

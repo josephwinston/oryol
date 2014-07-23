@@ -5,6 +5,7 @@
 #include "UnitTest++/src/UnitTest++.h"
 #include "Render/Core/stateWrapper.h"
 #include "Render/Core/meshFactory.h"
+#include "Render/Core/meshPool.h"
 #include "Render/Setup/RenderSetup.h"
 #include "Render/Core/displayMgr.h"
 #include "Render/Util/MeshBuilder.h"
@@ -24,6 +25,7 @@ using namespace Oryol::Resource;
 // to initialize a mesh!
 TEST(MeshFactoryTest) {
     
+    #if !ORYOL_UNITTESTS_HEADLESS
     // setup a GL context
     auto renderSetup = RenderSetup::Windowed(400, 300, "Oryol Test");
     displayMgr displayManager;
@@ -31,16 +33,17 @@ TEST(MeshFactoryTest) {
     
     // setup a meshFactory object
     stateWrapper stWrapper;
+    meshPool meshPool;
     meshFactory factory;
-    factory.Setup(&stWrapper);
+    factory.Setup(&stWrapper, &meshPool);
     factory.AttachLoader(RawMeshLoader::Create());
     
     // setup a MeshBuilder and create mesh geometry
     MeshBuilder mb;
     mb.SetNumVertices(4);
     mb.SetNumIndices(6);
-    mb.AddComponent(VertexAttr::Position, VertexFormat::Float3);
-    mb.AddComponent(VertexAttr::TexCoord0, VertexFormat::Float2);
+    mb.VertexLayout().Add(VertexAttr::Position, VertexFormat::Float3);
+    mb.VertexLayout().Add(VertexAttr::TexCoord0, VertexFormat::Float2);
     mb.AddPrimitiveGroup(PrimitiveType::Triangles, 0, 6);
     mb.Begin();
     mb.Vertex(0, VertexAttr::Position, 0.0f, 0.0f, 0.0f);  // top-left
@@ -63,35 +66,35 @@ TEST(MeshFactoryTest) {
     factory.SetupResource(mesh, meshData);
     CHECK(mesh.GetState() == Resource::State::Valid);
     CHECK(!mesh.GetId().IsValid());
-    CHECK(mesh.GetSetup().GetLocator().Location() == "myQuad");
-    CHECK(mesh.GetVertexBufferAttrs().GetNumVertices() == 4);
-    CHECK(mesh.GetVertexBufferAttrs().GetUsage() == Usage::Immutable);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetNumComponents() == 2);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetByteSize() == 20);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponentByteOffset(0) == 0);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponentByteOffset(1) == 12);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).IsValid());
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).GetAttr() == VertexAttr::Position);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).GetFormat() == VertexFormat::Float3);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).GetByteSize() == 12);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(1).IsValid());
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(1).GetAttr() == VertexAttr::TexCoord0);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(1).GetFormat() == VertexFormat::Float2);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetComponent(1).GetByteSize() == 8);
-    CHECK(mesh.GetIndexBufferAttrs().GetNumIndices() == 6);
-    CHECK(mesh.GetIndexBufferAttrs().GetIndexType() == IndexType::Index16);
-    CHECK(mesh.GetIndexBufferAttrs().GetUsage() == Usage::Immutable);
-    CHECK(mesh.GetIndexBufferAttrs().GetByteSize() == 12);
+    CHECK(mesh.GetSetup().Locator.Location() == "myQuad");
+    CHECK(mesh.GetVertexBufferAttrs().NumVertices == 4);
+    CHECK(mesh.GetVertexBufferAttrs().BufferUsage == Usage::Immutable);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.NumComponents() == 2);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.ByteSize() == 20);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.ComponentByteOffset(0) == 0);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.ComponentByteOffset(1) == 12);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(0).Valid());
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(0).Attr() == VertexAttr::Position);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(0).Format() == VertexFormat::Float3);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(0).ByteSize() == 12);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(1).Valid());
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(1).Attr() == VertexAttr::TexCoord0);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(1).Format() == VertexFormat::Float2);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.Component(1).ByteSize() == 8);
+    CHECK(mesh.GetIndexBufferAttrs().NumIndices == 6);
+    CHECK(mesh.GetIndexBufferAttrs().Type == IndexType::Index16);
+    CHECK(mesh.GetIndexBufferAttrs().BufferUsage == Usage::Immutable);
+    CHECK(mesh.GetIndexBufferAttrs().ByteSize() == 12);
     CHECK(mesh.GetNumPrimitiveGroups() == 1);
     CHECK(mesh.GetPrimitiveGroup(0).GetPrimitiveType() == PrimitiveType::Triangles);
     CHECK(mesh.GetPrimitiveGroup(0).GetBaseElement() == 0);
     CHECK(mesh.GetPrimitiveGroup(0).GetNumElements() == 6);
     #if ORYOL_OPENGL
-    CHECK(mesh.glGetVertexBuffer() != 0);
+    CHECK(mesh.glGetVertexBuffer(0) != 0);
     CHECK(mesh.glGetIndexBuffer() != 0);
-    CHECK(mesh.glGetVertexArrayObject() != 0);
+    CHECK(mesh.glGetVAO(0) != 0);
     for (uint32 i = 0; i < VertexAttr::NumVertexAttrs; i++) {
-        const glVertexAttr& glAttr = mesh.glAttr(i);
+        const glVertexAttr& glAttr = mesh.glAttr(0, i);
         CHECK(glAttr.index == i);
         if (VertexAttr::Position == i) {
             CHECK(glAttr.enabled == GL_TRUE);
@@ -123,14 +126,16 @@ TEST(MeshFactoryTest) {
     factory.DestroyResource(mesh);
     CHECK(mesh.GetState() == Resource::State::Setup);
     CHECK(!mesh.GetId().IsValid());
-    CHECK(mesh.GetVertexBufferAttrs().GetNumVertices() == 0);
-    CHECK(mesh.GetVertexBufferAttrs().GetUsage() == Usage::InvalidUsage);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetNumComponents() == 0);
-    CHECK(mesh.GetVertexBufferAttrs().GetVertexLayout().GetByteSize() == 0);
-    CHECK(mesh.GetIndexBufferAttrs().GetNumIndices() == 0);
-    CHECK(mesh.GetIndexBufferAttrs().GetIndexType() == IndexType::InvalidIndexType);
-    CHECK(mesh.GetIndexBufferAttrs().GetUsage() == Usage::InvalidUsage);
+    CHECK(mesh.GetVertexBufferAttrs().NumVertices == 0);
+    CHECK(mesh.GetVertexBufferAttrs().BufferUsage == Usage::InvalidUsage);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.NumComponents() == 0);
+    CHECK(mesh.GetVertexBufferAttrs().Layout.ByteSize() == 0);
+    CHECK(mesh.GetIndexBufferAttrs().NumIndices == 0);
+    CHECK(mesh.GetIndexBufferAttrs().Type == IndexType::InvalidIndexType);
+    CHECK(mesh.GetIndexBufferAttrs().BufferUsage == Usage::InvalidUsage);
     CHECK(mesh.GetNumPrimitiveGroups() == 0);
     factory.Discard();
     displayManager.DiscardDisplay();
+    
+    #endif
 }

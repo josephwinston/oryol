@@ -12,6 +12,7 @@
 #include "Render/Core/shaderPool.h"
 #include "Render/Core/programBundlePool.h"
 #include "Render/Core/texturePool.h"
+#include "Render/Core/drawStatePool.h"
 #include "Resource/Registry.h"
 #include "Resource/Pool.h"
 
@@ -29,8 +30,10 @@ public:
     /// destructor
     ~resourceMgr();
     
-    /// attach a resource loader
-    void AttachLoader(const Core::Ptr<meshLoaderBase>& loader);
+    /// attach mesh loader
+    void AttachLoader(meshLoaderBase* loader);
+    /// attach texture loader
+    void AttachLoader(textureLoaderBase* loader);
     
     /// setup the resource manager
     void Setup(const RenderSetup& setup, stateWrapper* stWrapper, displayMgr* dspMgr);
@@ -47,8 +50,8 @@ public:
     template<class SETUP> Resource::Id CreateResource(const SETUP& setup, const Core::Ptr<IO::Stream>& data);
     /// lookup a resource by resource locator (increments use-count of resource!)
     Resource::Id LookupResource(const Resource::Locator& locator);
-    /// discard a resource (decrement use-count, free resource if use-count is 0)
-    void DiscardResource(const Resource::Id& resId);
+    /// release a resource (decrement use-count, free resource if use-count is 0)
+    void ReleaseResource(const Resource::Id& resId);
     /// get the loading state of a resource
     Resource::State::Code QueryResourceState(const Resource::Id& resId);
     
@@ -58,6 +61,8 @@ public:
     programBundle* LookupProgramBundle(const Resource::Id& resId);
     /// lookup texture object
     texture* LookupTexture(const Resource::Id& resId);
+    /// lookup draw-state object
+    drawState* LookupDrawState(const Resource::Id& resId);
 
 private:
     bool isValid;
@@ -69,10 +74,12 @@ private:
     class shaderFactory shaderFactory;
     class programBundleFactory programBundleFactory;
     class textureFactory textureFactory;
+    class drawStateFactory drawStateFactory;
     class meshPool meshPool;
     class shaderPool shaderPool;
     class programBundlePool programBundlePool;
     class texturePool texturePool;
+    class drawStatePool drawStatePool;
 };
 
 //------------------------------------------------------------------------------
@@ -94,6 +101,13 @@ inline texture*
 resourceMgr::LookupTexture(const Resource::Id& resId) {
     o_assert_dbg(this->isValid);
     return this->texturePool.Lookup(resId);
+}
+
+//------------------------------------------------------------------------------
+inline drawState*
+resourceMgr::LookupDrawState(const Resource::Id& resId) {
+    o_assert_dbg(this->isValid);
+    return this->drawStatePool.Lookup(resId);
 }
 
 } // namespace Render

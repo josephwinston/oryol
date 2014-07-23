@@ -11,49 +11,87 @@ using namespace Resource;
     
 //------------------------------------------------------------------------------
 TextureSetup::TextureSetup() :
+IOLane(0),
+Width(0),
+Height(0),
+RelWidth(0.0f),
+RelHeight(0.0f),
+ColorFormat(PixelFormat::InvalidPixelFormat),
+DepthFormat(PixelFormat::InvalidPixelFormat),
+WrapU(TextureWrapMode::Repeat),
+WrapV(TextureWrapMode::Repeat),
+WrapW(TextureWrapMode::Repeat),
+MagFilter(TextureFilterMode::Nearest),
+MinFilter(TextureFilterMode::Nearest),
 shouldSetupFromFile(false),
-shouldSetupFromData(false),
+shouldSetupFromImageFileData(false),
+shouldSetupFromPixelData(false),
 shouldSetupAsRenderTarget(false),
 isRelSizeRenderTarget(false),
 hasSharedDepth(false),
-ioLane(0),
-width(0),
-height(0),
-relWidth(0.0f),
-relHeight(0.0f),
-colorFormat(PixelFormat::InvalidPixelFormat),
-depthFormat(PixelFormat::InvalidPixelFormat),
-wrapU(TextureWrapMode::Repeat),
-wrapV(TextureWrapMode::Repeat),
-wrapW(TextureWrapMode::Repeat),
-magFilter(TextureFilterMode::Nearest),
-minFilter(TextureFilterMode::Nearest) {
+hasMipMaps(false) {
     // empty
 }
 
 //------------------------------------------------------------------------------
 TextureSetup
-TextureSetup::AsRenderTarget(const Locator& loc, int32 w, int32 h, PixelFormat::Code colorFmt, PixelFormat::Code depthFmt) {
+TextureSetup::AsRenderTarget(const class Locator& loc, int32 w, int32 h, PixelFormat::Code colorFmt, PixelFormat::Code depthFmt) {
     o_assert(w > 0);
     o_assert(h > 0);
     o_assert(colorFmt != PixelFormat::InvalidPixelFormat);
 
     TextureSetup setup;
     setup.shouldSetupAsRenderTarget = true;
-    setup.locator = loc;
-    setup.width = w;
-    setup.height = h;
-    setup.colorFormat = colorFmt;
-    setup.depthFormat = depthFmt;
-    setup.wrapU = TextureWrapMode::ClampToEdge;
-    setup.wrapV = TextureWrapMode::ClampToEdge;
-    setup.wrapW = TextureWrapMode::InvalidTextureWrapMode;
+    setup.Locator = loc;
+    setup.Width = w;
+    setup.Height = h;
+    setup.ColorFormat = colorFmt;
+    setup.DepthFormat = depthFmt;
+    setup.WrapU = TextureWrapMode::ClampToEdge;
+    setup.WrapV = TextureWrapMode::ClampToEdge;
+    setup.WrapW = TextureWrapMode::InvalidTextureWrapMode;
     return setup;
 }
 
 //------------------------------------------------------------------------------
 TextureSetup
-TextureSetup::AsRelSizeRenderTarget(const Locator& loc, float32 relWidth, float32 relHeight, PixelFormat::Code colorFmt, PixelFormat::Code depthFmt) {
+TextureSetup::FromFile(const class Locator& loc, TextureSetup bluePrint) {
+    TextureSetup setup(bluePrint);
+    setup.shouldSetupFromFile = true;
+    setup.Locator = loc;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+TextureSetup
+TextureSetup::FromImageFileData(const class Locator& loc, TextureSetup bluePrint) {
+    TextureSetup setup(bluePrint);
+    setup.shouldSetupFromImageFileData = true;
+    setup.Locator = loc;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+TextureSetup
+TextureSetup::FromPixelData(const class Locator& loc, int32 w, int32 h, bool hasMipMaps, PixelFormat::Code fmt) {
+    o_assert(w > 0);
+    o_assert(h > 0);
+    o_assert(PixelFormat::IsValidTextureColorFormat(fmt));
+    o_assert(!PixelFormat::IsCompressedFormat(fmt));
+    
+    TextureSetup setup;
+    setup.shouldSetupFromPixelData = true;
+    setup.hasMipMaps = hasMipMaps;
+    setup.Locator = loc;
+    setup.Width = w;
+    setup.Height = h;
+    setup.ColorFormat = fmt;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+TextureSetup
+TextureSetup::AsRelSizeRenderTarget(const class Locator& loc, float32 relWidth, float32 relHeight, PixelFormat::Code colorFmt, PixelFormat::Code depthFmt) {
     o_assert(relWidth > 0.0f);
     o_assert(relHeight > 0.0f);
     o_assert(colorFmt != PixelFormat::InvalidPixelFormat);
@@ -61,38 +99,32 @@ TextureSetup::AsRelSizeRenderTarget(const Locator& loc, float32 relWidth, float3
     TextureSetup setup;
     setup.shouldSetupAsRenderTarget = true;
     setup.isRelSizeRenderTarget = true;
-    setup.locator = loc;
-    setup.relWidth = relWidth;
-    setup.relHeight = relHeight;
-    setup.colorFormat = colorFmt;
-    setup.depthFormat = depthFmt;
-    setup.wrapU = TextureWrapMode::ClampToEdge;
-    setup.wrapV = TextureWrapMode::ClampToEdge;
-    setup.wrapW = TextureWrapMode::InvalidTextureWrapMode;
+    setup.Locator = loc;
+    setup.RelWidth = relWidth;
+    setup.RelHeight = relHeight;
+    setup.ColorFormat = colorFmt;
+    setup.DepthFormat = depthFmt;
+    setup.WrapU = TextureWrapMode::ClampToEdge;
+    setup.WrapV = TextureWrapMode::ClampToEdge;
+    setup.WrapW = TextureWrapMode::InvalidTextureWrapMode;
     return setup;
 }
 
 //------------------------------------------------------------------------------
 TextureSetup
-TextureSetup::AsSharedDepthRenderTarget(const Locator& loc, PixelFormat::Code colorFmt, const Id& depthRenderTarget) {
+TextureSetup::AsSharedDepthRenderTarget(const class Locator& loc, PixelFormat::Code colorFmt, const Id& depthRenderTarget) {
     o_assert(colorFmt != PixelFormat::InvalidPixelFormat);
 
     TextureSetup setup;
     setup.shouldSetupAsRenderTarget = true;
-    setup.locator = loc;
+    setup.Locator = loc;
     setup.hasSharedDepth = true;
-    setup.colorFormat = colorFmt;
-    setup.depthRenderTarget = depthRenderTarget;
-    setup.wrapU = TextureWrapMode::ClampToEdge;
-    setup.wrapV = TextureWrapMode::ClampToEdge;
-    setup.wrapW = TextureWrapMode::InvalidTextureWrapMode;
+    setup.ColorFormat = colorFmt;
+    setup.DepthRenderTarget = depthRenderTarget;
+    setup.WrapU = TextureWrapMode::ClampToEdge;
+    setup.WrapV = TextureWrapMode::ClampToEdge;
+    setup.WrapW = TextureWrapMode::InvalidTextureWrapMode;
     return setup;
-}
-
-//------------------------------------------------------------------------------
-int32
-TextureSetup::GetIOLane() const {
-    return this->ioLane;
 }
 
 //------------------------------------------------------------------------------
@@ -103,8 +135,14 @@ TextureSetup::ShouldSetupFromFile() const {
 
 //------------------------------------------------------------------------------
 bool
-TextureSetup::ShouldSetupFromData() const {
-    return this->shouldSetupFromData;
+TextureSetup::ShouldSetupFromImageFileData() const {
+    return this->shouldSetupFromImageFileData;
+}
+
+//------------------------------------------------------------------------------
+bool
+TextureSetup::ShouldSetupFromPixelData() const {
+    return this->shouldSetupFromPixelData;
 }
 
 //------------------------------------------------------------------------------
@@ -122,7 +160,7 @@ TextureSetup::IsRelSizeRenderTarget() const {
 //------------------------------------------------------------------------------
 bool
 TextureSetup::HasDepth() const {
-    return this->hasSharedDepth || (this->depthFormat != PixelFormat::InvalidPixelFormat);
+    return this->hasSharedDepth || (this->DepthFormat != PixelFormat::InvalidPixelFormat);
 }
 
 //------------------------------------------------------------------------------
@@ -132,113 +170,9 @@ TextureSetup::HasSharedDepth() const {
 }
 
 //------------------------------------------------------------------------------
-const Resource::Locator&
-TextureSetup::GetLocator() const {
-    return this->locator;
-}
-
-//------------------------------------------------------------------------------
-int32
-TextureSetup::GetWidth() const {
-    return this->width;
-}
-
-//------------------------------------------------------------------------------
-int32
-TextureSetup::GetHeight() const {
-    return this->height;
-}
-
-//------------------------------------------------------------------------------
-float32
-TextureSetup::GetRelWidth() const {
-    return this->relWidth;
-}
-
-//------------------------------------------------------------------------------
-float32
-TextureSetup::GetRelHeight() const {
-    return this->relHeight;
-}
-
-//------------------------------------------------------------------------------
-PixelFormat::Code
-TextureSetup::GetColorFormat() const {
-    return this->colorFormat;
-}
-
-//------------------------------------------------------------------------------
-PixelFormat::Code
-TextureSetup::GetDepthFormat() const {
-    return this->depthFormat;
-}
-
-//------------------------------------------------------------------------------
-const Id&
-TextureSetup::GetDepthRenderTarget() const {
-    return this->depthRenderTarget;
-}
-
-//------------------------------------------------------------------------------
-void
-TextureSetup::SetWrapU(TextureWrapMode::Code m) {
-    this->wrapU = m;
-}
-
-//------------------------------------------------------------------------------
-TextureWrapMode::Code
-TextureSetup::GetWrapU() const {
-    return this->wrapU;
-}
-
-//------------------------------------------------------------------------------
-void
-TextureSetup::SetWrapV(TextureWrapMode::Code m) {
-    this->wrapV = m;
-}
-
-//------------------------------------------------------------------------------
-TextureWrapMode::Code
-TextureSetup::GetWrapV() const {
-    return this->wrapV;
-}
-
-//------------------------------------------------------------------------------
-void
-TextureSetup::SetWrapW(TextureWrapMode::Code m) {
-    this->wrapW = m;
-}
-
-//------------------------------------------------------------------------------
-TextureWrapMode::Code
-TextureSetup::GetWrapW() const {
-    return this->wrapW;
-}
-
-//------------------------------------------------------------------------------
-void
-TextureSetup::SetMagFilter(TextureFilterMode::Code f) {
-    o_assert((TextureFilterMode::Nearest == f) ||
-             (TextureFilterMode::Linear == f));
-    this->magFilter = f;
-}
-
-//------------------------------------------------------------------------------
-TextureFilterMode::Code
-TextureSetup::GetMagFilter() const {
-    return this->magFilter;
-}
-
-//------------------------------------------------------------------------------
-void
-TextureSetup::SetMinFilter(TextureFilterMode::Code f) {
-    this->minFilter = f;
-}
-
-//------------------------------------------------------------------------------
-TextureFilterMode::Code
-TextureSetup::GetMinFilter() const {
-    return this->minFilter;
+bool
+TextureSetup::HasMipMaps() const {
+    return this->hasMipMaps;
 }
 
 } // namespace Render

@@ -4,7 +4,7 @@
 //------------------------------------------------------------------------------
 #include "Pre.h"
 #include "UnitTest++/src/UnitTest++.h"
-#include "IO/assignRegistry.h"
+#include "IO/Core/assignRegistry.h"
 #include "Core/Ptr.h"
 
 using namespace Oryol::Core;
@@ -12,7 +12,7 @@ using namespace Oryol::IO;
 
 TEST(assignRegistryTest) {
     
-    assignRegistry* reg = assignRegistry::CreateSingleton();
+    assignRegistry* reg = assignRegistry::CreateSingle();
     
     reg->SetAssign("home:", "c:/program files/bla/");
     reg->SetAssign("bla:", "home:");
@@ -33,5 +33,5 @@ TEST(assignRegistryTest) {
     res = reg->ResolveAssigns("blub:");
     CHECK(res == "http://www.flohofwoe.net/blub/");
     
-    assignRegistry::DestroySingleton();
+    assignRegistry::DestroySingle();
 }

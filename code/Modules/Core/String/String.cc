@@ -97,8 +97,8 @@ String::destroy() {
     o_assert(0 == this->data->refCount);
     this->data->~StringData();
     Memory::Free(this->data);
-    this->data = 0;
-    this->strPtr = 0;
+    this->data = nullptr;
+    this->strPtr = nullptr;
 }
 
 //------------------------------------------------------------------------------
@@ -181,7 +181,9 @@ String::String(const std::string& str) {
 String::String(const String& rhs) {
     this->data = rhs.data;
     this->strPtr = rhs.strPtr;
-    this->addRef();
+    if (nullptr != this->data) {
+        this->addRef();
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -190,6 +192,11 @@ String::String(String&& rhs) {
     this->strPtr = rhs.strPtr;
     rhs.data = 0;
     rhs.strPtr = 0;
+}
+
+//------------------------------------------------------------------------------
+String::~String() {
+    this->release();
 }
 
 //------------------------------------------------------------------------------

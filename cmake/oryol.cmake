@@ -5,20 +5,27 @@
 
 include("${ORYOL_ROOT_DIR}/cmake/oryol_private.cmake")
 include("${ORYOL_ROOT_DIR}/cmake/oryol_unittests.cmake")
+include("${ORYOL_ROOT_DIR}/cmake/oryol_android.cmake")
+include("${ORYOL_ROOT_DIR}/cmake/oryol_osx.cmake")
+include("${ORYOL_ROOT_DIR}/cmake/oryol_pnacl.cmake")
+include("${ORYOL_ROOT_DIR}/cmake/oryol_generators.cmake")
 
 #-------------------------------------------------------------------------------
 #   define top-level options for the whole project
 #-------------------------------------------------------------------------------
 option(ORYOL_NO_ASSERTS_IN_RELEASE "Remove asserts in release-mode" OFF)
-if (ORYOL_EMSCRIPTEN OR ORYOL_NACL)
+if (ORYOL_NACL)
     option(ORYOL_UNITTESTS "Enable unit tests" OFF)
 else()
     option(ORYOL_UNITTESTS "Enable unit tests" ON)
 endif()
 option(ORYOL_UNITTESTS_RUN_AFTER_BUILD "Automatically run unit tests after building" OFF)
+option(ORYOL_UNITTESTS_HEADLESS "If enabled don't run tests which require a display" OFF)
 option(ORYOL_EXCEPTIONS "Enable C++ exceptions" OFF)
 option(ORYOL_ALLOCATOR_DEBUG "Enable allocator debugging code (slow)" OFF)
 option(ORYOL_SAMPLES "Compile sample programs" ON)
+option(ORYOL_FORCE_NO_THREADS "Enable to simulate no support for std::thread" OFF)
+option(ORYOL_COMPILE_VERBOSE "Enable very verbose compilation" OFF)
 
 # turn some dependent options on/off
 if (ORYOL_UNITTESTS)
@@ -52,19 +59,15 @@ macro(oryol_setup)
     set (ORYOL_HOST_WIN32 0)
     set (ORYOL_HOST_OSX 0)
     set (ORYOL_HOST_LINUX 0)
-
-    # manually override toolschain file for non-crosscompiling scenario
-    if (NOT CMAKE_TOOLCHAIN_FILE)
-        if (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Windows")
-            set(ORYOL_HOST_WINDOWS 1)
-            message("Oryol host system: Windows")
-        elseif (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Darwin")
-            set(ORYOL_HOST_OSX 1)
-            message("Oryol host system: OSX")
-        elseif (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Linux")
-            set(ORYOL_HOST_LINUX 1)
-            message("Oryol host system: Linux")         
-        endif()
+    if (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Windows")
+        set(ORYOL_HOST_WINDOWS 1)
+        message("Oryol host system: Windows")
+    elseif (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Darwin")
+        set(ORYOL_HOST_OSX 1)
+        message("Oryol host system: OSX")
+    elseif (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Linux")
+        set(ORYOL_HOST_LINUX 1)
+        message("Oryol host system: Linux")         
     endif()
 
     # manually include "toolchain" files for non-crosscompiling scenarios
@@ -94,6 +97,11 @@ macro(oryol_setup)
     endif()
     if (ORYOL_UNITTESTS)
         add_definitions(-DORYOL_UNITTESTS=1)
+        if (ORYOL_UNITTESTS_HEADLESS)
+            add_definitions(-DORYOL_UNITTESTS_HEADLESS=1)
+        else()
+            add_definitions(-DORYOL_UNITTESTS_HEADLESS=0)
+        endif()
     else()
         add_definitions(-DORYOL_UNITTESTS=0)
     endif()
@@ -113,6 +121,14 @@ macro(oryol_setup)
     else()
         add_definitions(-DORYOL_NO_ASSERT=0)
     endif()
+    if (ORYOL_FORCE_NO_THREADS)
+        add_definitions(-DORYOL_FORCE_NO_THREADS=1)
+    else()
+        add_definitions(-DORYOL_FORCE_NO_THREADS=0)
+    endif()
+
+    # GLM (math lib) definitions
+    add_definitions(-DGLM_FORCE_RADIANS=1)
     
     # check whether python is installed
     find_program(PYTHON "python")
@@ -135,7 +151,6 @@ macro(oryol_finish)
     oryol_end_web_samples()
 endmacro()
 
-
 #-------------------------------------------------------------------------------
 #   oryol_group(group)
 #   Define the IDE group name for the following targets. 
@@ -150,18 +165,6 @@ endmacro()
 #
 macro(oryol_project proj)
     project(${proj})
-endmacro()
-
-#-------------------------------------------------------------------------------
-#   oryol_osx_gui_identifier
-#   Setup setup special target properties for OSX/iOS. See 
-#   oryol_osx_add_target_properties() for details
-#
-macro(oryol_osx_gui_identifier id)
-    if (ORYOL_OSX OR ORYOL_IOS)
-        set(ORYOL_OSX_GUI_IDENTIFIER "${id}")
-        message("oryol_osx_gui_identifier called: ${ORYOL_OSX_GUI_IDENTIFIER}")
-    endif()
 endmacro()
 
 #-------------------------------------------------------------------------------
@@ -247,7 +250,9 @@ endmacro()
 macro(oryol_end_app)
 
     # add standard frameworks and libs
-    oryol_frameworks_osx(Foundation IOKit OpenGL Cocoa CoreVideo)    
+    if (ORYOL_OSX) 
+        oryol_frameworks_osx(${ORYOL_OSX_STANDARD_FRAMEWORKS})
+    endif()
 
     # setup dependency tracker variables for this module, executable
     # targets use this to resolve their dependencies
@@ -273,30 +278,38 @@ macro(oryol_end_app)
             oryol_copy_osx_dylib_files(${CurAppName} 1)
         elseif (ORYOL_WIN32 OR ORYOL_WIN64)
             add_executable(${CurAppName} WIN32 ${CurSources})
+        elseif (ORYOL_ANDROID)
+            add_library(${CurAppName} SHARED ${CurSources})
         else()
             add_executable(${CurAppName} ${CurSources})
         endif()
     else()
         # a command line application
-        add_executable(${CurAppName} ${CurSources})
+        if (ORYOL_ANDROID)
+            add_library(${CurAppName} SHARED ${CurSources})
+        else()
+            add_executable(${CurAppName} ${CurSources})
+        endif()
         if (ORYOL_OSX OR ORYOL_IOS)
             oryol_copy_osx_dylib_files(${CurAppName} 0)
         endif()
     endif()
     oryol_apply_target_group(${CurAppName})
 
+    # android specific stuff
+    if (ORYOL_ANDROID)
+        oryol_android_create_project(${CurAppName})
+        oryol_android_postbuildstep(${CurAppName})
+    endif()
+
     # handle XML generators (post-target)
     if (CurXmlFiles)
         oryol_handle_generator_files_posttarget(${CurAppName} "${CurXmlFiles}")
     endif()
 
-    # OSX: copy dylibs to executable directory
-    if (ORYOL_IOS OR ORYOL_OSX)
-        oryol_copy_osx_dylib_files(${CurAppName} 0)
-    endif()
-    
-    # pNaCl: add finalizer build step
+    # PNaCl specific stuff
     if (ORYOL_PNACL)
+        oryol_pnacl_create_wrapper(${CurAppName})
         oryol_pnacl_post_buildsteps(${CurAppName})
     endif()
 
@@ -304,7 +317,7 @@ macro(oryol_end_app)
     oryol_resolve_dependencies(${CurAppName})
     oryol_resolve_linklibs(${CurAppName})
     if (ORYOL_OSX OR ORYOL_IOS)
-        oryol_resolve_frameworks(${CurAppName})
+        oryol_osx_resolve_frameworks(${CurAppName})
     endif()
 
     # setup executable output directory and postfixes (_debug, etc...)
@@ -334,17 +347,6 @@ macro(oryol_libs libs)
 endmacro()
 
 #-------------------------------------------------------------------------------
-#   oryol_frameworks_osx(frameworks ...)
-#   OSX specific: Add one or more OSX frameworks for linking with the
-#   current target.
-#
-macro(oryol_frameworks_osx frameworks)
-    foreach (fw ${ARGV})
-        list(APPEND CurFrameworks ${fw})
-    endforeach()
-endmacro()
-
-#-------------------------------------------------------------------------------
 #   oryol_sources(dirs ...)
 #   Parse one or more directories for sources and add them to the current
 #   target.
@@ -354,10 +356,14 @@ macro(oryol_sources dirs)
         # gather files
         file(GLOB src ${dir}/*.cc ${dir}/*.cpp ${dir}/*.c ${dir}/*.m ${dir}/*.mm ${dir}/*.h ${dir}/*.hh)
         file(GLOB xmls ${dir}/*.xml)
-        if (ORYOL_NACL)
-            file(GLOB nacl ${dir}/*.nmf ${dir}/*.html)
+        file(GLOB shds ${dir}/*.shd)
+
+        # determine group folder name
+        string(REPLACE / \\ groupName ${dir})
+        if (${dir} STREQUAL .)
+            source_group("" FILES ${src} ${xmls} ${shds})
         else()
-            set(nacl)
+            source_group(${groupName} FILES ${src} ${xmls} ${shds})
         endif()
 
         # add generated source files
@@ -365,19 +371,15 @@ macro(oryol_sources dirs)
             string(REPLACE .xml .cc xmlSrc ${xml})
             string(REPLACE .xml .h xmlHdr ${xml})
             list(APPEND CurSources ${xmlSrc} ${xmlHdr})
+            if (${dir} STREQUAL .)
+                source_group("" FILES ${xmlSrc} ${xmlHdr})
+            else()
+                source_group(${groupName} FILES ${xmlSrc} ${xmlHdr})
+            endif()
         endforeach()
 
-        # setup IDE groups
-        string(REPLACE / \\ groupName ${dir})
-        if (${dir} STREQUAL .)
-            source_group("" FILES ${src} ${nacl} ${xmls})
-        else()
-            source_group(${groupName} FILES ${src} ${nacl} ${xmls})
-        endif()
-
         # add to global tracker variables
-        list(APPEND CurSources ${src} ${xmls})
-        list(APPEND CurNaclFiles ${nacl})
+        list(APPEND CurSources ${src} ${xmls} ${shds})
         list(APPEND CurXmlFiles ${xmls})
 
         # remove duplicate sources 
@@ -444,6 +446,26 @@ endmacro()
 #-------------------------------------------------------------------------------
 macro(oryol_sources_pnacl dirs)
     if (ORYOL_PNACL)
+        oryol_sources(${ARGV})
+    endif()
+endmacro()
+
+#-------------------------------------------------------------------------------
+#   oryol_sources_android(dirs ...)
+#   Add Android specific sources.
+#-------------------------------------------------------------------------------
+macro(oryol_sources_android dirs)
+    if (ORYOL_ANDROID)
+        oryol_sources(${ARGV})
+    endif()
+endmacro()
+
+#-------------------------------------------------------------------------------
+#   oryol_sources_ios(dirs ...)
+#   Add IOS specific sources.
+#-------------------------------------------------------------------------------
+macro(oryol_sources_ios dirs)
+    if (ORYOL_IOS)
         oryol_sources(${ARGV})
     endif()
 endmacro()

@@ -5,6 +5,14 @@
 
 message("Target Platform: emscripten")
 
+if (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Windows")
+    set(EMSC_SDK_DIRNAME "sdks/win/emscripten")
+elseif (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Darwin")
+    set(EMSC_SDK_DIRNAME "sdks/osx/emscripten")
+elseif (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Linux")
+    set(EMSC_SDK_DIRNAME "sdks/linux/emscripten")
+endif()
+
 set(ORYOL_PLATFORM EMSCRIPTEN)
 set(ORYOL_PLATFORM_NAME "emsc")
 set(ORYOL_EMSCRIPTEN 1)
@@ -20,10 +28,28 @@ set(EMSCRIPTEN_TOTAL_MEMORY 134217728)
 set(EMSCRIPTEN_TOTAL_MEMORY_WORKER 16777216)
 set(EMSCRIPTEN_USE_MEMORY_INIT_FILE 1)
 set(EMSCRIPTEN_LTO_LEVEL 3)
-set(EMSCRIPTEN_USE_CLOSURE 1)
+
+# disable closure for now, as long as ANGLE_instanced_array support is not fully supported in emscripten
+set(EMSCRIPTEN_USE_CLOSURE 0)
 set(EMSCRIPTEN_ASSERTIONS 0)
-set(EMSCRIPTEN_BUILD_VERBOSE 0)
 set(EMSCRIPTEN_OUTLINING_LIMIT 20000)
+
+if (ORYOL_COMPILE_VERBOSE)
+    set(EMSCRIPTEN_BUILD_VERBOSE 1)
+else()
+    set(EMSCRIPTEN_BUILD_VERBOSE 0)
+endif()
+
+# exceptions on/off?
+if (ORYOL_EXCEPTIONS)
+    message("C++ exceptions are enabled")
+    set(ORYOL_EMSC_EXCEPTION_FLAGS "")
+    set(EMSCRIPTEN_DISABLE_EXCEPTION_CATCHING 0)
+else()
+    message("C++ exceptions are disabled")
+    set(ORYOL_EMSC_EXCEPTION_FLAGS "-fno-exceptions")
+    set(EMSCRIPTEN_DISABLE_EXCEPTION_CATCHING 1)
+endif()
 
 message("EMSCRIPTEN_TOTAL_MEMORY: ${EMSCRIPTEN_TOTAL_MEMORY}")
 message("EMSCRIPTEN_TOTAL_MEMORY_WORKER: ${EMSCRIPTEN_TOTAL_MEMORY_WORKER}")
@@ -32,30 +58,25 @@ message("EMSCRIPTEN_LTO_LEVEL: ${EMSCRIPTEN_LTO_LEVEL}")
 message("EMSCRIPTEN_USE_CLOSURE: ${EMSCRIPTEN_USE_CLOSURE}")
 message("EMSCRIPTEN_ASSERTIONS: ${EMSCRIPTEN_ASSERTIONS}")
 message("EMSCRIPTEN_OUTLINING_LIMIT: ${EMSCRIPTEN_OUTLINING_LIMIT}")
+message("EMSCRIPTEN_DISABLE_EXCEPTION_CATCHING: ${EMSCRIPTEN_DISABLE_EXCEPTION_CATCHING}")
 
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_VERSION 1)
 set(COMPILING on)
 set(CMAKE_CROSSCOMPILING TRUE)
 
-# Locate where the Emscripten compiler resides in relative to this toolchain file.
-if ("${EMSCRIPTEN_ROOT_PATH}" STREQUAL "")
-    get_filename_component(GUESS_EMSCRIPTEN_ROOT_PATH "${CMAKE_CURRENT_LIST_DIR}/../../emscripten" ABSOLUTE)
-    if (EXISTS "${GUESS_EMSCRIPTEN_ROOT_PATH}/emranlib")
-        set(EMSCRIPTEN_ROOT_PATH "${GUESS_EMSCRIPTEN_ROOT_PATH}")
+macro(find_emscripten_sdk)
+    get_filename_component(EMSCRIPTEN_ROOT_PATH "${CMAKE_CURRENT_LIST_DIR}/../${EMSC_SDK_DIRNAME}" ABSOLUTE)
+    if (NOT EXISTS "${EMSCRIPTEN_ROOT_PATH}/emcc")
+        message(FATAL_ERROR "Could not find emscripten SDK at ${EMSC_SDK_DIRNAME}! See BUILD.md for instructions to setup Oryol for emscripten development!")
+    else()
+        message("Emscripten SDK found: ${EMSCRIPTEN_ROOT_PATH}")
+        set(EMSCRIPTEN_ROOT_PATH ${EMSCRIPTEN_ROOT_PATH} CACHE STRING "Emscripten SDK location.")
     endif()
-endif()
+endmacro()
 
-# If not found by above search, locate using the EMSCRIPTEN environment variable.
-if ("${EMSCRIPTEN_ROOT_PATH}" STREQUAL "")
-    set(EMSCRIPTEN_ROOT_PATH "$ENV{EMSCRIPTEN}")
-endif()
-
-# Abort if not found. 
-if ("${EMSCRIPTEN_ROOT_PATH}" STREQUAL "")
-    message(FATAL_ERROR "Could not locate the Emscripten compiler toolchain directory! Either set the EMSCRIPTEN environment variable, or pass -DEMSCRIPTEN_ROOT_PATH=xxx to CMake to explicitly specify the location of the compiler!")
-endif()
-message("Emscripten SDK: ${EMSCRIPTEN_ROOT_PATH}")
+# find the emscripten SDK
+find_emscripten_sdk()
 
 # Normalize, convert Windows backslashes to forward slashes or CMake will crash.
 get_filename_component(EMSCRIPTEN_ROOT_PATH "${EMSCRIPTEN_ROOT_PATH}" ABSOLUTE)
@@ -91,24 +112,24 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 set(CMAKE_SYSTEM_INCLUDE_PATH "${EMSCRIPTEN_ROOT_PATH}/system/include")
 
 # c++ compiler flags
-set(CMAKE_CXX_FLAGS "${ORYOL_PLATFORM_DEFINES} -std=c++11 -stdlib=libc++ -fno-exceptions -fstrict-aliasing -Wall -Wno-warn-absolute-paths -Wno-multichar -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -Wno-ignored-qualifiers -Wno-long-long -Wno-overloaded-virtual -Wno-deprecated-writable-strings -Wno-unused-volatile-lvalue")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
-set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g -D_DEBUG_ -D_DEBUG -DORYOL_DEBUG=1")
+set(CMAKE_CXX_FLAGS "${ORYOL_PLATFORM_DEFINES} -std=c++11 -stdlib=libc++ ${ORYOL_EMSC_EXCEPTION_FLAGS} -fstrict-aliasing -Wall -Wno-warn-absolute-paths -Wno-multichar -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -Wno-ignored-qualifiers -Wno-long-long -Wno-overloaded-virtual -Wno-deprecated-writable-strings -Wno-unused-volatile-lvalue")
+set(CMAKE_CXX_FLAGS_RELEASE "-Oz -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-Oz -g -D_DEBUG_ -D_DEBUG -DORYOL_DEBUG=1")
 
 # c compiler flags
 set(CMAKE_C_FLAGS "${ORYOL_PLATFORM_DEFINES} -fstrict-aliasing -Wall -Wno-warn-absolute-paths -Wextra -Wno-multichar -Wno-unused-parameter -Wno-unknown-pragmas -Wno-ignored-qualifiers -Wno-long-long -Wno-overloaded-virtual -Wno-deprecated-writable-strings -Wno-unused-volatile-lvalue")
-set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
-set(CMAKE_C_FLAGS_DEBUG "-O2 -g -D_DEBUG_ -D_DEBUG -DORYOL_DEBUG=1")
+set(CMAKE_C_FLAGS_RELEASE "-Oz -DNDEBUG")
+set(CMAKE_C_FLAGS_DEBUG "-Oz -g -D_DEBUG_ -D_DEBUG -DORYOL_DEBUG=1")
 
 # linker flags
-set(CMAKE_EXE_LINKER_FLAGS "--memory-init-file ${EMSCRIPTEN_USE_MEMORY_INIT_FILE} -s WARN_ON_UNDEFINED_SYMBOLS=1 -s TOTAL_MEMORY=${EMSCRIPTEN_TOTAL_MEMORY} -s DISABLE_EXCEPTION_CATCHING=1")
-set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-O2 --llvm-lto ${EMSCRIPTEN_LTO_LEVEL} -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE} -s ASM_JS=1 -s ASSERTIONS=${EMSCRIPTEN_ASSERTIONS} -s OUTLINING_LIMIT=${EMSCRIPTEN_OUTLINING_LIMIT} --closure ${EMSCRIPTEN_USE_CLOSURE}")
-set(CMAKE_EXE_LINKER_FLAGS_DEBUG "-O2 -g -s ASM_JS=1 -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE}")
+set(CMAKE_EXE_LINKER_FLAGS "--memory-init-file ${EMSCRIPTEN_USE_MEMORY_INIT_FILE} -s WARN_ON_UNDEFINED_SYMBOLS=1 -s TOTAL_MEMORY=${EMSCRIPTEN_TOTAL_MEMORY} -s DISABLE_EXCEPTION_CATCHING=${EMSCRIPTEN_DISABLE_EXCEPTION_CATCHING}")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-Oz --llvm-lto ${EMSCRIPTEN_LTO_LEVEL} -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE} -s ASM_JS=1 -s ASSERTIONS=${EMSCRIPTEN_ASSERTIONS} -s OUTLINING_LIMIT=${EMSCRIPTEN_OUTLINING_LIMIT} --closure ${EMSCRIPTEN_USE_CLOSURE}")
+set(CMAKE_EXE_LINKER_FLAGS_DEBUG "-Oz -g -s ASM_JS=1 -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE}")
 
 # dynamic lib linker flags
-set(CMAKE_SHARED_LINKER_FLAGS "-shared --memory-init-file 0 -s WARN_ON_UNDEFINED_SYMBOLS=1 -s TOTAL_MEMORY=${EMSCRIPTEN_TOTAL_MEMORY_WORKER} -s BUILD_AS_WORKER=1 -s EXPORTED_FUNCTIONS=[\\\"_dowork\\\"] -s DISABLE_EXCEPTION_CATCHING=1")
-set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-O2 --llvm-lto ${EMSCRIPTEN_LTO_LEVEL} -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE} -s ASM_JS=1 -s ASSERTIONS=${EMSCRIPTEN_ASSERTIONS} -s OUTLINING_LIMIT=${EMSCRIPTEN_OUTLINING_LIMIT} --closure ${EMSCRIPTEN_USE_CLOSURE}")
-set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "-O2 -g -s ASM_JS=1 -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE} --closure 0")
+set(CMAKE_SHARED_LINKER_FLAGS "-shared --memory-init-file 0 -s WARN_ON_UNDEFINED_SYMBOLS=1 -s TOTAL_MEMORY=${EMSCRIPTEN_TOTAL_MEMORY_WORKER} -s BUILD_AS_WORKER=1 -s EXPORTED_FUNCTIONS=[\\\"_dowork\\\"] -s DISABLE_EXCEPTION_CATCHING=${EMSCRIPTEN_DISABLE_EXCEPTION_CATCHING}")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Oz --llvm-lto ${EMSCRIPTEN_LTO_LEVEL} -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE} -s ASM_JS=1 -s ASSERTIONS=${EMSCRIPTEN_ASSERTIONS} -s OUTLINING_LIMIT=${EMSCRIPTEN_OUTLINING_LIMIT} --closure ${EMSCRIPTEN_USE_CLOSURE}")
+set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "-Oz -g -s ASM_JS=1 -s VERBOSE=${EMSCRIPTEN_BUILD_VERBOSE} --closure 0")
 
 # update cache variables for cmake gui
 set(CMAKE_CONFIGURATION_TYPES "${CMAKE_CONFIGURATION_TYPES}" CACHE STRING "Config Type" FORCE)

@@ -4,15 +4,16 @@
     @class Oryol::Render::glShaderFactory
     @brief private: GL implementation of class shaderFactory
 */
-#include "Resource/simpleFactory.h"
+#include "Render/base/simpleFactory.h"
 #include "Render/Core/mesh.h"
+#include "Render/Core/Enums.h"
 
 namespace Oryol {
 namespace Render {
     
 class shader;
     
-class glShaderFactory : public Resource::simpleFactory<shader> {
+class glShaderFactory : public simpleFactory<shader, ResourceType::Shader> {
 public:
     /// constructor
     glShaderFactory();
@@ -30,6 +31,9 @@ public:
     void SetupResource(shader& shd);
     /// destroy the shader
     void DestroyResource(shader& shd);
+    
+    /// compile a GL shader (return 0 if failed)
+    GLuint compileShader(ShaderType::Code type, const Core::String& src) const;
     
 private:
     bool isValid;

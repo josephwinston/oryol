@@ -5,9 +5,10 @@
 #include "Render/gl/gl_impl.h"
 #include "Render/gl/glInfo.h"
 #include "Render/gl/glExt.h"
+#include "Render/RenderProtocol.h"
 #include "glfwDisplayMgr.h"
 #include "Core/Log.h"
-#if ORYOL_OSX
+#if ORYOL_MACOS
 #define GLFW_INCLUDE_GLCOREARB
 #endif
 #include "GLFW/glfw3.h"
@@ -15,16 +16,13 @@
 namespace Oryol {
 namespace Render {
     
-//------------------------------------------------------------------------------
-void
-glfwDisplayMgr::glfwErrorCallback(int error, const char* desc) {
-    Core::Log::Error("GLFW error: '%d', '%s'\n", error, desc);
-}
-
+glfwDisplayMgr* glfwDisplayMgr::self = nullptr;
+    
 //------------------------------------------------------------------------------
 glfwDisplayMgr::glfwDisplayMgr() :
 glfwWindow(nullptr) {
-    // empty
+    o_assert(nullptr == self);
+    self = this;
 }
 
 //------------------------------------------------------------------------------
@@ -32,6 +30,8 @@ glfwDisplayMgr::~glfwDisplayMgr() {
     if (this->IsDisplayValid()) {
         this->DiscardDisplay();
     }
+    o_assert(nullptr != self);
+    self = nullptr;
 }
 
 //------------------------------------------------------------------------------
@@ -49,15 +49,15 @@ glfwDisplayMgr::SetupDisplay(const RenderSetup& setup) {
     glfwSetErrorCallback(glfwErrorCallback);
     
     // setup the GLFW window
-    PixelFormat::Code colorPixelFormat = setup.GetColorPixelFormat();
-    PixelFormat::Code depthPixelFormat = setup.GetDepthPixelFormat();
+    PixelFormat::Code colorPixelFormat = setup.ColorPixelFormat;
+    PixelFormat::Code depthPixelFormat = setup.DepthPixelFormat;
     glfwWindowHint(GLFW_RED_BITS, PixelFormat::NumBits(colorPixelFormat, PixelFormat::Red));
     glfwWindowHint(GLFW_GREEN_BITS, PixelFormat::NumBits(colorPixelFormat, PixelFormat::Green));
     glfwWindowHint(GLFW_BLUE_BITS, PixelFormat::NumBits(colorPixelFormat, PixelFormat::Blue));
     glfwWindowHint(GLFW_ALPHA_BITS, PixelFormat::NumBits(colorPixelFormat, PixelFormat::Alpha));
     glfwWindowHint(GLFW_DEPTH_BITS, PixelFormat::NumBits(depthPixelFormat, PixelFormat::Depth));
     glfwWindowHint(GLFW_STENCIL_BITS, PixelFormat::NumBits(colorPixelFormat, PixelFormat::Stencil));
-    #if ORYOL_OSX
+    #if ORYOL_MACOS
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -66,21 +66,21 @@ glfwDisplayMgr::SetupDisplay(const RenderSetup& setup) {
 
     // windowed or fullscreen mode?
     GLFWmonitor* glfwMonitor = nullptr;
-    if (setup.IsFullscreen()) {
+    if (setup.IsFullscreen) {
         glfwMonitor = glfwGetPrimaryMonitor();
     }
     
     // now actually create the window
-    this->glfwWindow = glfwCreateWindow(setup.GetWindowWidth(),
-                                        setup.GetWindowHeight(),
-                                        setup.GetWindowTitle().AsCStr(),
+    this->glfwWindow = glfwCreateWindow(setup.WindowWidth,
+                                        setup.WindowHeight,
+                                        setup.WindowTitle.AsCStr(),
                                         glfwMonitor,
                                         0);
     o_assert(nullptr != this->glfwWindow);
     
     // and make the window's GL context current
     glfwMakeContextCurrent(this->glfwWindow);
-    glfwSwapInterval(setup.GetSwapInterval());
+    glfwSwapInterval(setup.SwapInterval);
 
     // dump GL information
     glInfo::PrintInfo();
@@ -95,12 +95,15 @@ glfwDisplayMgr::SetupDisplay(const RenderSetup& setup) {
     glfwGetFramebufferSize(this->glfwWindow, &fbWidth, &fbHeight);
     glfwGetWindowPos(this->glfwWindow, &posX, &posY);
     glfwGetWindowSize(this->glfwWindow, &width, &height);
-    this->displayAttrs.SetFramebufferWidth(fbWidth);
-    this->displayAttrs.SetFramebufferHeight(fbHeight);
-    this->displayAttrs.SetWindowPosX(posX);
-    this->displayAttrs.SetWindowPosY(posY);
-    this->displayAttrs.SetWindowWidth(width);
-    this->displayAttrs.SetWindowHeight(height);
+    this->displayAttrs.FramebufferWidth  = fbWidth;
+    this->displayAttrs.FramebufferHeight = fbHeight;
+    this->displayAttrs.WindowPosX        = posX;
+    this->displayAttrs.WindowPosY        = posY;
+    this->displayAttrs.WindowWidth       = width;
+    this->displayAttrs.WindowHeight      = height;
+    
+    // set framebuffer size changed callback
+    glfwSetFramebufferSizeCallback(this->glfwWindow, glwfFramebufferSizeChanged);
 }
 
 //------------------------------------------------------------------------------
@@ -142,9 +145,32 @@ glfwDisplayMgr::Present() {
 }
 
 //------------------------------------------------------------------------------
-GLuint
-glfwDisplayMgr::glGetDefaultFramebuffer() const {
-    return 0;
+void
+glfwDisplayMgr::glBindDefaultFramebuffer() {
+    ::glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    ORYOL_GL_CHECK_ERROR();
+}
+
+//------------------------------------------------------------------------------
+void
+glfwDisplayMgr::glfwErrorCallback(int error, const char* desc) {
+    Core::Log::Error("GLFW error: '%d', '%s'\n", error, desc);
+}
+
+//------------------------------------------------------------------------------
+void
+glfwDisplayMgr::glwfFramebufferSizeChanged(GLFWwindow* win, int width, int height) {
+
+    // update display attributes
+    self->displayAttrs.FramebufferWidth = width;
+    self->displayAttrs.FramebufferHeight = height;
+    int winWidth, winHeight;
+    glfwGetWindowSize(self->glfwWindow, &winWidth, &winHeight);
+    self->displayAttrs.WindowWidth = winWidth;
+    self->displayAttrs.WindowHeight = winHeight;
+    
+    // notify event handlers
+    self->notifyEventHandlers(RenderProtocol::DisplayModified::Create());
 }
 
 } // namespace Render

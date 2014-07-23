@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// machine generated, do not edit!
+// #version:2# machine generated, do not edit!
 //-----------------------------------------------------------------------------
 #include "Pre.h"
 #include "IOProtocol.h"
@@ -22,7 +22,7 @@ IOProtocol::CreateCallback IOProtocol::jumpTable[IOProtocol::MessageId::NumMessa
     &IOProtocol::notifyFileSystemReplaced::FactoryCreate,
     &IOProtocol::notifyFileSystemAdded::FactoryCreate,
 };
-Messaging::Message*
+Core::Ptr<Messaging::Message>
 IOProtocol::Factory::Create(Messaging::MessageIdType id) {
     if (id < Messaging::Protocol::MessageId::NumMessageIds) {
         return Messaging::Protocol::Factory::Create(id);

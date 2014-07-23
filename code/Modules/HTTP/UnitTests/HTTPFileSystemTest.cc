@@ -13,11 +13,12 @@ using namespace Oryol::Core;
 using namespace Oryol::IO;
 using namespace Oryol::HTTP;
 
+#if !ORYOL_EMSCRIPTEN
 TEST(HTTPFileSystemTest) {
     
     // setup an IO facade, and associate http: with the HTTPFileSystem
-    IOFacade* ioFacade = IOFacade::CreateSingleton();
-    ioFacade->RegisterFileSystem<HTTPFileSystem>("http", &HTTPFileSystem::Create<>);
+    IOFacade* ioFacade = IOFacade::CreateSingle();
+    ioFacade->RegisterFileSystem("http", Creator<HTTPFileSystem,FileSystem>());
     
     // asynchronously load the index.html file
     Ptr<IOProtocol::Get> req = ioFacade->LoadFile("http://www.flohofwoe.net/index.html");
@@ -39,5 +40,6 @@ TEST(HTTPFileSystemTest) {
     loadedData->Close();
     req = 0;
     
-    IOFacade::DestroySingleton();
+    IOFacade::DestroySingle();
 }
+#endif

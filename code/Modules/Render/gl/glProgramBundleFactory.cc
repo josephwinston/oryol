@@ -5,7 +5,10 @@
 #include "glProgramBundleFactory.h"
 #include "Render/Core/stateWrapper.h"
 #include "Render/Core/shader.h"
+#include "Render/Core/shaderPool.h"
+#include "Render/Core/shaderFactory.h"
 #include "Render/gl/gl_impl.h"
+#include "Render/gl/glExt.h"
 #include "Core/Memory/Memory.h"
 
 namespace Oryol {
@@ -18,6 +21,7 @@ using namespace Resource;
 glProgramBundleFactory::glProgramBundleFactory() :
 glStateWrapper(0),
 shdPool(0),
+shdFactory(0),
 isValid(false) {
     // empty
 }
@@ -29,13 +33,15 @@ glProgramBundleFactory::~glProgramBundleFactory() {
 
 //------------------------------------------------------------------------------
 void
-glProgramBundleFactory::Setup(stateWrapper* stWrapper, shaderPool* pool) {
+glProgramBundleFactory::Setup(stateWrapper* stWrapper, shaderPool* pool, shaderFactory* factory) {
     o_assert(!this->isValid);
     o_assert(nullptr != stWrapper);
     o_assert(nullptr != pool);
+    o_assert(nullptr != factory);
     this->isValid = true;
     this->glStateWrapper = stWrapper;
     this->shdPool = pool;
+    this->shdFactory = factory;
 }
 
 //------------------------------------------------------------------------------
@@ -45,6 +51,7 @@ glProgramBundleFactory::Discard() {
     this->isValid = false;
     this->glStateWrapper = nullptr;
     this->shdPool = nullptr;
+    this->shdFactory = nullptr;
 }
 
 //------------------------------------------------------------------------------
@@ -60,19 +67,50 @@ glProgramBundleFactory::SetupResource(programBundle& progBundle) {
     o_assert(progBundle.GetState() == Resource::State::Setup);
     this->glStateWrapper->InvalidateProgramState();
 
+    #if ORYOL_OPENGLES2
+    const ShaderLang::Code slang = ShaderLang::GLSL100;
+    #elif ORYOL_MACOS
+    const ShaderLang::Code slang = ShaderLang::GLSL150;
+    #else
+    const ShaderLang::Code slang = ShaderLang::GLSL120;
+    #endif
+
     // for each program in the bundle...
     const ProgramBundleSetup& setup = progBundle.GetSetup();
-    const int32 numProgs = setup.GetNumPrograms();
+    const int32 numProgs = setup.NumPrograms();
     for (int32 progIndex = 0; progIndex < numProgs; progIndex++) {
         
-        // lookup vertex and fragment shader objects
-        const shader* vertexShader = this->shdPool->Lookup(setup.GetVertexShader(progIndex));
-        o_assert(nullptr != vertexShader);
-        const shader* fragmentShader = this->shdPool->Lookup(setup.GetFragmentShader(progIndex));
-        o_assert(nullptr != fragmentShader);
-        GLuint glVertexShader = vertexShader->glGetShader();
+        // lookup or compile vertex shader
+        Map<String,String> noDefines;
+        GLuint glVertexShader = 0;
+        bool deleteVertexShader = false;
+        if (setup.VertexShaderSource(progIndex, slang).IsValid()) {
+            // compile the vertex shader from source
+            glVertexShader = this->shdFactory->compileShader(ShaderType::VertexShader, setup.VertexShaderSource(progIndex, slang));
+            deleteVertexShader = true;
+        }
+        else {
+            // vertex shader is precompiled
+            const shader* vertexShader = this->shdPool->Lookup(setup.VertexShader(progIndex));
+            o_assert(nullptr != vertexShader);
+            glVertexShader = vertexShader->glGetShader();
+        }
         o_assert(0 != glVertexShader);
-        GLuint glFragmentShader = fragmentShader->glGetShader();
+        
+        // lookup or compile fragment shader
+        GLuint glFragmentShader = 0;
+        bool deleteFragmentShader = false;
+        if (setup.FragmentShaderSource(progIndex, slang).IsValid()) {
+            // compile the fragment shader from source
+            glFragmentShader = this->shdFactory->compileShader(ShaderType::FragmentShader, setup.FragmentShaderSource(progIndex, slang));
+            deleteFragmentShader = true;
+        }
+        else {
+            // fragment shader is precompiled
+            const shader* fragmentShader = this->shdPool->Lookup(setup.FragmentShader(progIndex));
+            o_assert(nullptr != fragmentShader);
+            glFragmentShader = fragmentShader->glGetShader();
+        }
         o_assert(0 != glFragmentShader);
         
         // create GL program object and attach vertex/fragment shader
@@ -85,16 +123,27 @@ glProgramBundleFactory::SetupResource(programBundle& progBundle) {
         // bind vertex attribute locations
         /// @todo: would be good to optimize this to only bind
         /// attributes which exist in the shader (may be with more shader source generation)
+        #if !ORYOL_USE_GLGETATTRIBLOCATION
+        o_assert(VertexAttr::NumVertexAttrs <= glExt::GetMaxVertexAttribs());
         for (int32 i = 0; i < VertexAttr::NumVertexAttrs; i++) {
             ::glBindAttribLocation(glProg, i, VertexAttr::ToString((VertexAttr::Code)i));
         }
         ORYOL_GL_CHECK_ERROR();
+        #endif
         
         // link the program
         ::glLinkProgram(glProg);
         ORYOL_GL_CHECK_ERROR();
         
-        // did it work?
+        // can discard shaders now if we compiled them ourselves
+        if (deleteVertexShader) {
+            glDeleteShader(glVertexShader);
+        }
+        if (deleteFragmentShader) {
+            glDeleteShader(glFragmentShader);
+        }
+        
+        // linking successful?
         GLint linkStatus;
         ::glGetProgramiv(glProg, GL_LINK_STATUS, &linkStatus);
         #if ORYOL_DEBUG
@@ -110,21 +159,21 @@ glProgramBundleFactory::SetupResource(programBundle& progBundle) {
         
         // if linking failed, stop the app
         if (!linkStatus) {
-            o_error("Failed to link program '%d' -> '%s'\n", progIndex, setup.GetLocator().Location().AsCStr());
+            o_error("Failed to link program '%d' -> '%s'\n", progIndex, setup.Locator.Location().AsCStr());
             progBundle.setState(Resource::State::Failed);
             return;
         }
         
         // linking succeeded, store GL program
-        progBundle.addProgram(setup.GetMask(progIndex), glProg);
+        progBundle.addProgram(setup.Mask(progIndex), glProg);
         
         // resolve user uniform locations
         this->glStateWrapper->UseProgram(glProg);
         int32 samplerIndex = 0;
-        const int32 numUniforms = setup.GetNumUniforms();
+        const int32 numUniforms = setup.NumUniforms();
         for (int32 i = 0; i < numUniforms; i++) {
-            const String& name = setup.GetUniformName(i);
-            const int16 slotIndex = setup.GetUniformSlot(i);
+            const String& name = setup.UniformName(i);
+            const int16 slotIndex = setup.UniformSlot(i);
             const GLint glLocation = ::glGetUniformLocation(glProg, name.AsCStr());
             progBundle.bindUniform(progIndex, slotIndex, glLocation);
             
@@ -137,15 +186,15 @@ glProgramBundleFactory::SetupResource(programBundle& progBundle) {
             }
         }
         
-        // resolve standard uniform locations
-        const int32 numStdUniforms = setup.GetNumStandardUniforms();
-        for (int32 i = 0; i < numStdUniforms; i++) {
-            const String& name = setup.GetStandardUniformName(i);
-            StandardUniform::Code stdUniform = setup.GetStandardUniform(i);
-            const GLint glLocation = ::glGetUniformLocation(glProg, name.AsCStr());
-            progBundle.bindStandardUniform(progIndex, stdUniform, glLocation);
+        #if ORYOL_USE_GLGETATTRIBLOCATION
+        // resolve attrib locations
+        for (int32 i = 0; i < VertexAttr::NumVertexAttrs; i++) {
+            GLint loc = ::glGetAttribLocation(glProg, VertexAttr::ToString((VertexAttr::Code)i));
+            progBundle.bindAttribLocation(progIndex, (VertexAttr::Code)i, loc);
         }
+        #endif
     }
+    this->glStateWrapper->InvalidateProgramState();
     
     // at this point the whole programBundle object has been successfully setup
     progBundle.setState(Resource::State::Valid);

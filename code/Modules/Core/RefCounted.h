@@ -12,7 +12,7 @@
 */
 #include "Core/Types.h"
 #include "Core/Ptr.h"
-#include "Core/Macros.h"
+#include "Core/Class.h"
 #include "Core/Memory/poolAllocator.h"
 
 namespace Oryol {
@@ -26,7 +26,6 @@ public:
     
     /// get reference count
     int32 GetRefCount() const;
-
     /// add reference
     void addRef();
     /// release reference (calls destructor when ref_count reaches zero)

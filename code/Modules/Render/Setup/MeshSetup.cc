@@ -11,34 +11,89 @@ using namespace Resource;
     
 //------------------------------------------------------------------------------
 MeshSetup::MeshSetup() :
-vertexUsage(Usage::InvalidUsage),
-indexUsage(Usage::InvalidUsage),
-ioLane(0),
+VertexUsage(Usage::InvalidUsage),
+IndexUsage(Usage::InvalidUsage),
+IOLane(0),
+NumVertices(0),
+NumIndices(0),
+IndicesType(IndexType::None),
+numPrimGroups(0),
 setupFromFile(false),
-setupFromData(false) {
+setupFromData(false),
+setupEmpty(false),
+setupFullScreenQuad(false) {
     // empty
 }
 
 //------------------------------------------------------------------------------
 MeshSetup
-MeshSetup::FromFile(const Locator& loc, int32 ioLane, Usage::Code vbUsage, Usage::Code ibUsage) {
+MeshSetup::FromFile(const class Locator& loc, int32 ioLane, Usage::Code vbUsage, Usage::Code ibUsage) {
     MeshSetup setup;
-    setup.locator = loc;
-    setup.ioLane = ioLane;
-    setup.vertexUsage = vbUsage;
-    setup.indexUsage = ibUsage;
+    setup.Locator = loc;
+    setup.IOLane = ioLane;
+    setup.VertexUsage = vbUsage;
+    setup.IndexUsage = ibUsage;
     setup.setupFromFile = true;
     return setup;
 }
 
 //------------------------------------------------------------------------------
 MeshSetup
-MeshSetup::FromData(const Locator& loc, Usage::Code vbUsage, Usage::Code ibUsage) {
+MeshSetup::FromFile(const class Locator& loc, const MeshSetup& blueprint) {
+    MeshSetup setup(blueprint);
+    setup.Locator = loc;
+    setup.setupFromFile = true;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+MeshSetup
+MeshSetup::FromData(const class Locator& loc, Usage::Code vbUsage, Usage::Code ibUsage) {
     MeshSetup setup;
-    setup.locator = loc;
-    setup.vertexUsage = vbUsage;
-    setup.indexUsage = ibUsage;
+    setup.Locator = loc;
+    setup.VertexUsage = vbUsage;
+    setup.IndexUsage = ibUsage;
     setup.setupFromData = true;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+MeshSetup
+MeshSetup::FromData(const class Locator& loc, const MeshSetup& blueprint) {
+    MeshSetup setup(blueprint);
+    setup.Locator = loc;
+    setup.setupFromData = true;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+MeshSetup
+MeshSetup::CreateEmpty(const class Locator& loc,
+                       int32 numVertices,
+                       Usage::Code vertexUsage,
+                       IndexType::Code indexType,
+                       int32 numIndices,
+                       Usage::Code indexUsage) {
+    
+    o_assert(numVertices > 0);
+    
+    MeshSetup setup;
+    setup.Locator = loc;
+    setup.setupEmpty = true;
+    setup.VertexUsage = vertexUsage;
+    setup.IndexUsage = indexUsage;
+    setup.NumVertices = numVertices;
+    setup.NumIndices = numIndices;
+    setup.IndicesType = indexType;
+    return setup;
+}
+
+//------------------------------------------------------------------------------
+MeshSetup
+MeshSetup::CreateFullScreenQuad(const class Locator& loc) {
+    MeshSetup setup;
+    setup.Locator = loc;
+    setup.setupFullScreenQuad = true;
     return setup;
 }
 
@@ -55,27 +110,36 @@ MeshSetup::ShouldSetupFromData() const {
 }
 
 //------------------------------------------------------------------------------
-const Locator&
-MeshSetup::GetLocator() const {
-    return this->locator;
+bool
+MeshSetup::ShouldSetupEmpty() const {
+    return this->setupEmpty;
 }
 
 //------------------------------------------------------------------------------
-Usage::Code
-MeshSetup::GetVertexUsage() const {
-    return this->vertexUsage;
+bool
+MeshSetup::ShouldSetupFullScreenQuad() const {
+    return this->setupFullScreenQuad;
 }
 
 //------------------------------------------------------------------------------
-Usage::Code
-MeshSetup::GetIndexUsage() const {
-    return this->indexUsage;
+void
+MeshSetup::AddPrimitiveGroup(const class PrimitiveGroup& primGroup) {
+    o_assert(this->setupEmpty);
+    o_assert(this->numPrimGroups < MaxNumPrimGroups);
+    this->primGroups[this->numPrimGroups++] = primGroup;
 }
 
 //------------------------------------------------------------------------------
 int32
-MeshSetup::GetIOLane() const {
-    return this->ioLane;
+MeshSetup::NumPrimitiveGroups() const {
+    return this->numPrimGroups;
+}
+
+//------------------------------------------------------------------------------
+const class PrimitiveGroup&
+MeshSetup::PrimitiveGroup(int32 index) const {
+    o_assert_range(index, MaxNumPrimGroups);
+    return this->primGroups[index];
 }
 
 } // namespace Render

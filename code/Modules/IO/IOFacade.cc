@@ -3,7 +3,7 @@
 //------------------------------------------------------------------------------
 #include "Pre.h"
 #include "IOFacade.h"
-#include "IO/assignRegistry.h"
+#include "IO/Core/assignRegistry.h"
 #include "Core/CoreFacade.h"
 
 namespace Oryol {
@@ -20,8 +20,8 @@ const int32 IOFacade::numIOLanes = 4;
 IOFacade::IOFacade() {
     this->SingletonEnsureUnique();
     this->mainThreadId = std::this_thread::get_id();
-    assignRegistry::CreateSingleton();
-    schemeRegistry::CreateSingleton();
+    assignRegistry::CreateSingle();
+    schemeRegistry::CreateSingle();
     this->requestRouter = ioRequestRouter::Create(IOFacade::numIOLanes);
     CoreFacade::Instance()->RunLoop()->Add(RunLoop::Callback("IO::IOFacade", 0, std::bind(&IOFacade::doWork, this)));
 }
@@ -31,8 +31,8 @@ IOFacade::~IOFacade() {
     o_assert(this->isMainThread());
     CoreFacade::Instance()->RunLoop()->Remove("IO::IOFacade");
     this->requestRouter = 0;
-    schemeRegistry::DestroySingleton();
-    assignRegistry::DestroySingleton();
+    schemeRegistry::DestroySingle();
+    assignRegistry::DestroySingle();
 }
 
 //------------------------------------------------------------------------------
@@ -74,6 +74,26 @@ IOFacade::ResolveAssigns(const String& str) const {
     return assignRegistry::Instance()->ResolveAssigns(str);
 }
 
+//------------------------------------------------------------------------------
+void
+IOFacade::RegisterFileSystem(const Core::StringAtom& scheme, CreatorRef<FileSystem> fsCreator) {
+    schemeRegistry* reg = schemeRegistry::Instance();
+    bool newFileSystem = !reg->IsFileSystemRegistered(scheme);
+    reg->RegisterFileSystem(scheme, fsCreator);
+    if (newFileSystem) {
+        // notify IO threads that a filesystem was added
+        Core::Ptr<IOProtocol::notifyFileSystemAdded> msg = IOProtocol::notifyFileSystemAdded::Create();
+        msg->SetScheme(scheme);
+        this->requestRouter->Put(msg);
+    }
+    else {
+        // notify IO threads that a filesystem was replaced
+        Core::Ptr<IOProtocol::notifyFileSystemReplaced> msg = IOProtocol::notifyFileSystemReplaced::Create();
+        msg->SetScheme(scheme);
+        this->requestRouter->Put(msg);
+    }
+}
+    
 //------------------------------------------------------------------------------
 void
 IOFacade::UnregisterFileSystem(const StringAtom& scheme) {

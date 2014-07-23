@@ -6,6 +6,7 @@
 #include "Render/Util/ShapeBuilder.h"
 #include "Render/Core/stateWrapper.h"
 #include "Render/Core/meshFactory.h"
+#include "Render/Core/meshPool.h"
 #include "Render/Setup/RenderSetup.h"
 #include "Render/Core/displayMgr.h"
 #include "Render/Util/RawMeshLoader.h"
@@ -23,6 +24,7 @@ using namespace Oryol::Resource;
 
 //------------------------------------------------------------------------------
 TEST(ShapeBuilderTest) {
+    #if !ORYOL_UNITTESTS_HEADLESS
     
     // setup a GL context
     auto renderSetup = RenderSetup::Windowed(400, 300, "Oryol Test");
@@ -31,15 +33,16 @@ TEST(ShapeBuilderTest) {
     
     // setup a meshFactory object
     stateWrapper stWrapper;
+    meshPool meshPool;
     meshFactory factory;
-    factory.Setup(&stWrapper);
+    factory.Setup(&stWrapper, &meshPool);
     factory.AttachLoader(RawMeshLoader::Create());
     
     // the state builder
     ShapeBuilder shapeBuilder;
     
     // build a simple cube
-    shapeBuilder.AddComponent(VertexAttr::Position, VertexFormat::Float3);
+    shapeBuilder.VertexLayout().Add(VertexAttr::Position, VertexFormat::Float3);
     shapeBuilder.AddBox(1.0f, 1.0f, 1.0f, 1);
     shapeBuilder.Build();
     
@@ -48,26 +51,26 @@ TEST(ShapeBuilderTest) {
     simpleCube.setSetup(MeshSetup::FromData(Locator("myCube")));
     simpleCube.setState(Resource::State::Setup);
     factory.SetupResource(simpleCube, shapeBuilder.GetStream());
-    CHECK(simpleCube.GetVertexBufferAttrs().GetNumVertices() == 24);
-    CHECK(simpleCube.GetVertexBufferAttrs().GetVertexLayout().GetNumComponents() == 1);
-    CHECK(simpleCube.GetVertexBufferAttrs().GetVertexLayout().GetByteSize() == 12);
-    CHECK(simpleCube.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).IsValid());
-    CHECK(simpleCube.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).GetAttr() == VertexAttr::Position);
-    CHECK(simpleCube.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).GetFormat() == VertexFormat::Float3);
-    CHECK(simpleCube.GetVertexBufferAttrs().GetVertexLayout().GetComponent(0).GetByteSize() == 12);
-    CHECK(simpleCube.GetIndexBufferAttrs().GetNumIndices() == 36);
-    CHECK(simpleCube.GetIndexBufferAttrs().GetIndexType() == IndexType::Index16);
-    CHECK(simpleCube.GetIndexBufferAttrs().GetUsage() == Usage::Immutable);
+    CHECK(simpleCube.GetVertexBufferAttrs().NumVertices == 24);
+    CHECK(simpleCube.GetVertexBufferAttrs().Layout.NumComponents() == 1);
+    CHECK(simpleCube.GetVertexBufferAttrs().Layout.ByteSize() == 12);
+    CHECK(simpleCube.GetVertexBufferAttrs().Layout.Component(0).Valid());
+    CHECK(simpleCube.GetVertexBufferAttrs().Layout.Component(0).Attr() == VertexAttr::Position);
+    CHECK(simpleCube.GetVertexBufferAttrs().Layout.Component(0).Format() == VertexFormat::Float3);
+    CHECK(simpleCube.GetVertexBufferAttrs().Layout.Component(0).ByteSize() == 12);
+    CHECK(simpleCube.GetIndexBufferAttrs().NumIndices == 36);
+    CHECK(simpleCube.GetIndexBufferAttrs().Type == IndexType::Index16);
+    CHECK(simpleCube.GetIndexBufferAttrs().BufferUsage == Usage::Immutable);
     CHECK(simpleCube.GetNumPrimitiveGroups() == 1);
     CHECK(simpleCube.GetPrimitiveGroup(0).GetPrimitiveType() == PrimitiveType::Triangles);
     CHECK(simpleCube.GetPrimitiveGroup(0).GetBaseElement() == 0);
     CHECK(simpleCube.GetPrimitiveGroup(0).GetNumElements() == 36);
     #if ORYOL_OPENGL
-    CHECK(simpleCube.glGetVertexBuffer() != 0);
+    CHECK(simpleCube.glGetVertexBuffer(0) != 0);
     CHECK(simpleCube.glGetIndexBuffer() != 0);
-    CHECK(simpleCube.glGetVertexArrayObject() != 0);
+    CHECK(simpleCube.glGetVAO(0) != 0);
     for (uint32 i = 0; i < VertexAttr::NumVertexAttrs; i++) {
-        const glVertexAttr& glAttr = simpleCube.glAttr(i);
+        const glVertexAttr& glAttr = simpleCube.glAttr(0, i);
         CHECK(glAttr.index == i);
         if (VertexAttr::Position == i) {
             CHECK(glAttr.enabled == GL_TRUE);
@@ -92,4 +95,6 @@ TEST(ShapeBuilderTest) {
 
     factory.Discard();
     displayManager.DiscardDisplay();
+    
+    #endif
 }

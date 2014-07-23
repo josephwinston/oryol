@@ -5,20 +5,30 @@
     @brief global configuration defines
 */
 
-// does the platform have threading support?
-#if ORYOL_EMSCRIPTEN
-#define ORYOL_HAS_ATOMIC (1)
+// does the platform have std::thread support?
+#if ORYOL_FORCE_NO_THREADS
+#define ORYOL_HAS_THREADS (0)
+#elif ORYOL_EMSCRIPTEN
+#define ORYOL_HAS_THREADS (0)
+#elif ORYOL_IOS
+// iOS SDK doesn't support thread-local-storage as keyword and
+// I don't want to go back to pthreads, so suck it iOS, no threads for you
 #define ORYOL_HAS_THREADS (0)
 #else
-/// set to (1) on platform with pthreads-style threading support
-#define ORYOL_HAS_ATOMIC (1)
 #define ORYOL_HAS_THREADS (1)
 #endif
 
-#if ORYOL_WINDOWS
-#define ORYOL_THREAD_LOCAL __declspec(thread)
+// does the platform have std::atomic support?
+#define ORYOL_HAS_ATOMIC (1)
+
+#if ORYOL_HAS_THREADS
+    #if ORYOL_WINDOWS
+    #define ORYOL_THREAD_LOCAL __declspec(thread)
+    #else
+    #define ORYOL_THREAD_LOCAL __thread
+    #endif
 #else
-#define ORYOL_THREAD_LOCAL __thread
+    #define ORYOL_THREAD_LOCAL
 #endif
 
 // platform specific max-alignment

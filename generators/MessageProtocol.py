@@ -4,17 +4,15 @@ Code generator for message protocol xml files.
 
 import os
 import sys
+import util
 
-#-------------------------------------------------------------------------------
-def error(msg) :
-    print "ERROR: {}".format(msg)
-    sys.exit(10)
+Version = 2
 
 #-------------------------------------------------------------------------------
 def checkValidAttr(attr) :
     for key in attr.keys() :
         if not key in ('name', 'type', 'def', 'dir') :
-            error('Invalid Attr attr "{}"'.format(key))
+            util.error('Invalid Attr attr "{}"'.format(key))
     
 #-------------------------------------------------------------------------------
 def writeHeaderTop(f, xmlRoot) :
@@ -23,7 +21,7 @@ def writeHeaderTop(f, xmlRoot) :
     '''
     f.write('#pragma once\n')
     f.write('//-----------------------------------------------------------------------------\n')
-    f.write('/*\n')
+    f.write('/* #version:{}#\n'.format(Version))
     f.write('    machine generated, do not edit!\n')
     f.write('*/\n')
     f.write('#include <cstring>\n')
@@ -86,7 +84,7 @@ def writeMessageIdEnum(f, xmlRoot) :
     f.write('            return Messaging::InvalidMessageId;\n')
     f.write('        };\n')
     f.write('    };\n')
-    f.write('    typedef Messaging::Message* (*CreateCallback)();\n')
+    f.write('    typedef Core::Ptr<Messaging::Message> (*CreateCallback)();\n')
     f.write('    static CreateCallback jumpTable[' + protocol + '::MessageId::NumMessageIds];\n')
 
 #-------------------------------------------------------------------------------
@@ -96,7 +94,7 @@ def writeFactoryClassDecl(f, xmlRoot) :
     '''
     f.write('    class Factory {\n')
     f.write('    public:\n')
-    f.write('        static Messaging::Message* Create(Messaging::MessageIdType id);\n')
+    f.write('        static Core::Ptr<Messaging::Message> Create(Messaging::MessageIdType id);\n')
     f.write('    };\n')
 
 #-------------------------------------------------------------------------------
@@ -111,7 +109,7 @@ def writeFactoryClassImpl(f, xmlRoot) :
     for msg in xmlRoot.findall('Message') :
         f.write('    &' + protocol + '::' + msg.get('name') + '::FactoryCreate,\n')
     f.write('};\n')
-    f.write('Messaging::Message*\n')
+    f.write('Core::Ptr<Messaging::Message>\n')
     f.write(protocol + '::Factory::Create(Messaging::MessageIdType id) {\n')
     f.write('    if (id < ' + parentProtocol + '::MessageId::NumMessageIds) {\n')
     f.write('        return ' + parentProtocol + '::Factory::Create(id);\n')
@@ -208,8 +206,8 @@ def writeMessageClasses(f, xmlRoot) :
         f.write('        };\n')
 
         # special factory create method
-        f.write('        static Messaging::Message* FactoryCreate() {\n')
-        f.write('            return (Messaging::Message*) Create();\n')
+        f.write('        static Core::Ptr<Messaging::Message> FactoryCreate() {\n')
+        f.write('            return Create();\n')
         f.write('        };\n')
 
         # special class message id static method
@@ -339,7 +337,7 @@ def writeSourceTop(f, xmlRoot, absSourcePath) :
     hdrFile, ext = os.path.splitext(hdrFileAndExt)
 
     f.write('//-----------------------------------------------------------------------------\n')
-    f.write('// machine generated, do not edit!\n')
+    f.write('// #version:{}# machine generated, do not edit!\n'.format(Version))
     f.write('//-----------------------------------------------------------------------------\n')
     f.write('#include "Pre.h"\n')
     f.write('#include "' + hdrFile + '.h"\n')
@@ -367,6 +365,10 @@ def generateSource(xmlTree, absSourcePath) :
     f.write('}\n')
     f.write('}\n')
     f.close()
+
+#-------------------------------------------------------------------------------
+def isDirty(xmlTree, absXmlPath, absSourcePath, absHeaderPath) :
+    return util.fileVersionDirty(absSourcePath, Version) or util.fileVersionDirty(absHeaderPath, Version)
 
 #-------------------------------------------------------------------------------
 def generate(xmlTree, absXmlPath, absSourcePath, absHeaderPath) :

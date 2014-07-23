@@ -31,7 +31,7 @@
 */
 #include "Core/Containers/Array.h"
 #include "Core/Log.h"
-#include "IO/Stream.h"
+#include "IO/Stream/Stream.h"
 #include "Resource/State.h"
 
 namespace Oryol {
@@ -127,7 +127,7 @@ loaderFactory<RESOURCE,LOADER>::SetupResource(RESOURCE& res) {
             }
         }
         // fallthrough: no suitable loader found
-        Core::Log::Warn("Resource::loaderFactory: No suitable loader for resource '%s'\n", res.GetSetup().GetLocator().Location().AsCStr());
+        Core::Log::Warn("Resource::loaderFactory: No suitable loader for resource '%s'\n", res.GetSetup().Locator.Location().AsCStr());
         res.setState(State::Failed);
     }
 }
@@ -159,7 +159,7 @@ loaderFactory<RESOURCE,LOADER>::SetupResource(RESOURCE& res, const Core::Ptr<IO:
             }
         }
         // fallthrough: no suitable loader found
-        Core::Log::Warn("Resource::loaderFactory: No suitable loader for resource '%s'\n", res.GetSetup().GetLocator().Location().AsCStr());
+        Core::Log::Warn("Resource::loaderFactory: No suitable loader for resource '%s'\n", res.GetSetup().Locator.Location().AsCStr());
         res.setState(State::Failed);
     }
 }

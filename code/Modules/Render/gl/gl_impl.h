@@ -4,7 +4,7 @@
     Central GL header file, this is BIG, make sure to only include
     this in implementation files, not header files.
 */
-#if ORYOL_OSX
+#if ORYOL_MACOS
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
 #elif (ORYOL_WINDOWS || ORYOL_LINUX)
@@ -20,8 +20,12 @@
 #include <ppapi/gles2/gl2ext_ppapi.h>
 #elif ORYOL_EMSCRIPTEN
 #define GL_GLEXT_PROTOTYPES
+/*
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+*/
+#include <GL/gl.h>
+#include <GL/glext.h>
 #elif ORYOL_ANDROID
 #define GL_GLEXT_PROTOTYPES
 #include <GLES2/gl2.h>

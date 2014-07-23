@@ -3,8 +3,8 @@
 //------------------------------------------------------------------------------
 #include "Pre.h"
 #include "UnitTest++/src/UnitTest++.h"
-#include "IO/FileSystem.h"
-#include "IO/schemeRegistry.h"
+#include "IO/FS/FileSystem.h"
+#include "IO/Core/schemeRegistry.h"
 
 using namespace Oryol;
 using namespace Oryol::Core;
@@ -44,13 +44,13 @@ TEST(schemeRegistryTest) {
     const StringAtom file("file");
     const StringAtom bla("bla");
 
-    schemeRegistry::CreateSingleton();
+    schemeRegistry::CreateSingle();
     schemeRegistry* reg = schemeRegistry::Instance();
     
     // @todo: hrmpf, this is ugly ...
-    reg->RegisterFileSystem<TestFS_A>(http, &TestFS_A::Create<>);
-    reg->RegisterFileSystem<TestFS_B>(ftp, &TestFS_B::Create<>);
-    reg->RegisterFileSystem<TestFS_C>(file, &TestFS_C::Create<>);
+    reg->RegisterFileSystem(http, Creator<TestFS_A,FileSystem>());
+    reg->RegisterFileSystem(ftp, Creator<TestFS_B,FileSystem>());
+    reg->RegisterFileSystem(file, Creator<TestFS_C,FileSystem>());
     
     CHECK(reg->IsFileSystemRegistered(http));
     CHECK(reg->IsFileSystemRegistered(ftp));
@@ -67,6 +67,6 @@ TEST(schemeRegistryTest) {
     CHECK(fsc);
     CHECK(fsc->GetType() == 2);
     
-    schemeRegistry::DestroySingleton();
+    schemeRegistry::DestroySingle();
 }
 

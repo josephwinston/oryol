@@ -4,7 +4,7 @@
 #include "Pre.h"
 #include "UnitTest++/src/UnitTest++.h"
 #include "Core/String/String.h"
-#include "IO/IOStatus.h"
+#include "IO/Core/IOStatus.h"
 
 using namespace Oryol;
 using namespace Oryol::Core;
@@ -56,6 +56,7 @@ TEST(IOStatusTest) {
     CHECK(TOSTR(GatewayTimeout));
     CHECK(TOSTR(HTTPVersionNotSupported));
     CHECK(TOSTR(Cancelled));
+    CHECK(TOSTR(DownloadError));
 
     CHECK(FROMSTR(Continue));
     CHECK(FROMSTR(SwitchingProtocols));
@@ -98,4 +99,5 @@ TEST(IOStatusTest) {
     CHECK(FROMSTR(GatewayTimeout));
     CHECK(FROMSTR(HTTPVersionNotSupported));
     CHECK(FROMSTR(Cancelled));
+    CHECK(FROMSTR(DownloadError));
 }
